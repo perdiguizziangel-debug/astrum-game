@@ -82,7 +82,7 @@ const ObjectHunt = ({ onComplete, onClose }) => {
                 <div style={{ marginTop: '1rem', animation: 'fadeIn 0.5s' }}>
                     <CheckCircle size={48} color="#2ecc71" style={{ margin: '0 auto 1rem' }} />
                     <h3 style={{ color: '#2ecc71' }}>¡Correcto!</h3>
-                    <p>Has ganado 10 puntos para {gameState.currentUser.house}.</p>
+                    <p>Has ganado 10 puntos para <span style={{ textTransform: 'capitalize' }}>{gameState.currentUser.house}</span>.</p>
                     <button className="button-primary" onClick={onClose} style={{ marginTop: '1rem' }}>Volver al Aula</button>
                 </div>
             )}

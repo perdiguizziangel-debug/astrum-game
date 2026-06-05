@@ -90,7 +90,7 @@ const HouseSelector = () => {
                             color: house.color,
                             fontFamily: 'var(--font-serif)',
                             fontSize: '1.2rem',
-                            textTransform: 'uppercase',
+                            textTransform: 'capitalize',
                             letterSpacing: '1px'
                         }}>
                             {house.name}

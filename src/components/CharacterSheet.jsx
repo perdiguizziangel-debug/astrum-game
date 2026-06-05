@@ -1,12 +1,15 @@
 import React, { useRef, useState } from 'react';
 import { useGame } from '../context/GameContext';
+import AvatarGeneratorModal from './AvatarGeneratorModal';
 import { Shield, Sparkles, Wand2, Edit, Camera, X, Save, Calendar } from 'lucide-react';
+import { resizeImage } from '../utils/imageUtils';
 
 const CharacterSheet = () => {
     const { gameState, updateUser } = useGame();
     const user = gameState.currentUser;
     const fileInputRef = useRef(null);
     const [isEditing, setIsEditing] = useState(false);
+    const [isGeneratorOpen, setIsGeneratorOpen] = useState(false);
     const [editData, setEditData] = useState({});
 
     const nextLevelXp = user.level * 100;
@@ -26,14 +29,15 @@ const CharacterSheet = () => {
         fileInputRef.current.click();
     };
 
-    const handleFileChange = (e) => {
+    const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                updateUser(user.id, { avatar: reader.result });
-            };
-            reader.readAsDataURL(file);
+            try {
+                const resized = await resizeImage(file, 300, 300);
+                updateUser(user.id, { avatar: resized });
+            } catch (error) {
+                console.error("Error resizing image", error);
+            }
         }
     };
 
@@ -51,7 +55,8 @@ const CharacterSheet = () => {
 
     return (
         <div className="card magic-border" style={{ display: 'flex', gap: '2rem', alignItems: 'center' }}>
-            <div style={{ position: 'relative', cursor: 'pointer' }} onClick={handleAvatarClick} title="Cambiar foto">
+            <div style={{ position: 'relative' }}>
+            <label style={{ position: 'relative', cursor: 'pointer', display: 'block' }} title="Cambiar foto">
                 <img
                     src={user.avatar}
                     alt={user.name}
@@ -83,11 +88,34 @@ const CharacterSheet = () => {
                 </div>
                 <input
                     type="file"
-                    ref={fileInputRef}
                     style={{ display: 'none' }}
                     accept="image/*"
                     onChange={handleFileChange}
                 />
+            </label>
+            
+            <button 
+                onClick={() => setIsGeneratorOpen(true)}
+                style={{
+                    position: 'absolute',
+                    top: '-10px',
+                    left: '-10px',
+                    background: 'var(--color-gold)',
+                    color: 'black',
+                    border: 'none',
+                    borderRadius: '20px',
+                    padding: '0.3rem 0.8rem',
+                    fontSize: '0.7rem',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.3rem',
+                    cursor: 'pointer',
+                    boxShadow: '0 0 10px var(--color-gold)'
+                }}
+            >
+                <Sparkles size={14} /> IA
+            </button>
             </div>
 
             <div style={{ flex: 1 }}>
@@ -116,6 +144,35 @@ const CharacterSheet = () => {
                         </div>
                     )}
                 </div>
+
+                {user.lastMonthlyBonusDate !== new Date().toISOString().slice(0, 7) && (
+                    <button
+                        onClick={() => {
+                            const currentMonth = new Date().toISOString().slice(0, 7);
+                            updateUser(user.id, {
+                                xp: (user.xp || 0) + 50,
+                                lastMonthlyBonusDate: currentMonth
+                            });
+                            alert("¡Has reclamado tu bono mensual de 50 XP!");
+                        }}
+                        style={{
+                            background: 'linear-gradient(45deg, #f1c40f, #f39c12)',
+                            color: 'black',
+                            border: 'none',
+                            padding: '0.5rem 1rem',
+                            borderRadius: '20px',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            marginBottom: '1.5rem',
+                            boxShadow: '0 0 10px rgba(241, 196, 15, 0.5)'
+                        }}
+                    >
+                        <Sparkles size={16} /> ¡Reclamar Bono Mensual (+50 XP)!
+                    </button>
+                )}
 
                 <div style={{ background: '#333', height: '20px', borderRadius: '10px', overflow: 'hidden', position: 'relative' }}>
                     <div style={{
@@ -208,6 +265,12 @@ const CharacterSheet = () => {
                     </div>
                 </div>
             )}
+
+            <AvatarGeneratorModal 
+                isOpen={isGeneratorOpen} 
+                onClose={() => setIsGeneratorOpen(false)} 
+                currentAvatar={user.avatar} 
+            />
         </div>
     );
 };

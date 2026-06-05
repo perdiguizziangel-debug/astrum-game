@@ -119,7 +119,7 @@ const PetInteraction = () => {
                         zIndex: 2, whiteSpace: 'nowrap',
                         boxShadow: '0 4px 6px rgba(0,0,0,0.5)'
                     }}>
-                        MASCOTA: HIPOCAMPO
+                        MASCOTA: {directorStats.petName || "MISTERIOSA"}
                     </div>
                 </div>
 

@@ -118,8 +118,7 @@ const EditProfileModal = ({ isOpen, onClose }) => {
                                 alt="Preview"
                                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                             />
-                            <div
-                                onClick={() => fileInputRef.current.click()}
+                            <label
                                 style={{
                                     position: 'absolute',
                                     bottom: 0,
@@ -130,19 +129,29 @@ const EditProfileModal = ({ isOpen, onClose }) => {
                                     textAlign: 'center',
                                     padding: '0.3rem',
                                     fontSize: '0.7rem',
-                                    cursor: 'pointer'
+                                    cursor: 'pointer',
+                                    display: 'block'
                                 }}
                             >
                                 Cambiar
-                            </div>
+                                <input
+                                    type="file"
+                                    id="avatar-input"
+                                    style={{ 
+                                        position: 'absolute',
+                                        width: '1px',
+                                        height: '1px',
+                                        padding: '0',
+                                        margin: '-1px',
+                                        overflow: 'hidden',
+                                        clip: 'rect(0,0,0,0)',
+                                        border: '0'
+                                    }}
+                                    accept="image/*"
+                                    onChange={handleFileChange}
+                                />
+                            </label>
                         </div>
-                        <input
-                            type="file"
-                            ref={fileInputRef}
-                            style={{ display: 'none' }}
-                            accept="image/*"
-                            onChange={handleFileChange}
-                        />
                     </div>
 
                     {/* Basic Info */}

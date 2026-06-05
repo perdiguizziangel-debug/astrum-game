@@ -26,7 +26,7 @@ const HourglassItem = ({ house, data, image }) => {
                     fontFamily: 'var(--font-serif)',
                     fontSize: '0.8rem',
                     fontWeight: 'bold',
-                    textTransform: 'uppercase',
+                    textTransform: 'capitalize',
                     textShadow: `0 0 5px ${data.color}`,
                     letterSpacing: '1px'
                 }}>

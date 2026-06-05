@@ -16,8 +16,6 @@ const DailyTrivia = () => {
 
     if (!dailyTrivia || !currentUser) return null;
 
-    const isDirector = currentUser.role === 'director';
-
     const alreadySolved = dailyTrivia.solvedBy?.includes(currentUser.id);
     const isCorrect = selectedOption === dailyTrivia.correctAnswer;
     const totalSolved = currentUser.triviaSolved || 0;
@@ -269,14 +267,8 @@ const DailyTrivia = () => {
                         transition: 'all 0.3s'
                     }}
                 >
-                    {isDirector ? 'VISTA PREVIA (ENVIAR)' : 'ENVIAR RESPUESTA'}
+                    ENVIAR RESPUESTA
                 </button>
-            )}
-
-            {isDirector && (
-                <div style={{ marginTop: '1rem', textAlign: 'center', color: '#a855f7', fontSize: '0.8rem', opacity: 0.7 }}>
-                    Modo Vista Previa (Director)
-                </div>
             )}
 
             {/* Feedback Message */}

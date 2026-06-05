@@ -6,8 +6,8 @@ const StrengthBar = () => {
     const { gameState } = useGame();
     const student = gameState.currentUser;
 
-    // Director doesn't need strength bar, and ensure student has strength data
-    if (!student || student.role === 'director' || !student.strength) return null;
+    // Ensure student has strength data
+    if (!student || !student.strength) return null;
 
     const { current, max } = student.strength;
     const percentage = Math.min(100, Math.max(0, (current / max) * 100));

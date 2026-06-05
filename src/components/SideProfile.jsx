@@ -88,7 +88,7 @@ const SideProfile = () => {
                     {user.name}
                 </h2>
                 <div style={{
-                    textTransform: 'uppercase',
+                    textTransform: 'capitalize',
                     letterSpacing: '2px',
                     fontSize: '0.8rem',
                     color: 'var(--color-text-muted)',

@@ -1,16 +1,17 @@
 import React, { useState, useRef } from 'react';
 import { useGame } from '../context/GameContext';
 import { resizeImage } from '../utils/imageUtils';
-import { QrCode, UserPlus, Star, Link as LinkIcon, Trash2, Edit, X, Save, Camera, Sparkles } from 'lucide-react';
+import { QrCode, UserPlus, Star, Link as LinkIcon, Trash2, Edit, X, Save, Camera, Sparkles, Feather, Zap, ToggleLeft, ToggleRight, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 const ChallengeCreatorForm = ({ onSubmit }) => {
+    const { gameState } = useGame();
     const [type, setType] = useState('text');
     const [question, setQuestion] = useState('');
     const [options, setOptions] = useState(['', '', '']);
     const [correctAnswer, setCorrectAnswer] = useState('');
 
-    const [image, setImage] = useState(null);
+    const [image, setImage] = useState(gameState.dailyChallenge?.image || null);
     const challengeImageRef = useRef(null);
     const [showSuccess, setShowSuccess] = useState(false);
 
@@ -50,7 +51,7 @@ const ChallengeCreatorForm = ({ onSubmit }) => {
         setQuestion('');
         setCorrectAnswer('');
         setOptions(['', '', '']);
-        setImage(null);
+        // Image stays fixed until changed
 
         setTimeout(() => setShowSuccess(false), 3000);
     };
@@ -167,24 +168,73 @@ const ChallengeCreatorForm = ({ onSubmit }) => {
 };
 
 const DirectorDashboard = () => {
-    const { gameState, addPoints, updateUser, updateDirectorStat, closeCycle, startNewCycle, resetDirectorScore, updateNoticeBoard, resetPetStreaks, resetPlantStreaks, setDailyChallenge, setDailyTrivia, triggerEvent, resolveEvent } = useGame();
+    const { 
+        gameState, addPoints, updateUser, editStudent, restoreEnergy, advanceSchoolYear, 
+        toggleHouseChatStatus, toggleMagicClassroom, updateDirectorStat, closeCycle, 
+        startNewCycle, resetDirectorScore, updateNoticeBoard, resetPetStreaks, 
+        resetPlantStreaks, setDailyChallenge, setDailyTrivia, triggerEvent, resolveEvent,
+        toggleActivity, adjustStudentXP
+    } = useGame();
     const [pointsToAdd, setPointsToAdd] = useState(10);
     const [selectedHouse, setSelectedHouse] = useState('phoenix');
     const [editingStudent, setEditingStudent] = useState(null);
     const fileInputRef = useRef(null);
 
+    // Toast Feedback
+    const [toast, setToast] = useState(null);
+    const showToast = (msg, color = '#2ecc71') => {
+        setToast({ msg, color });
+        setTimeout(() => setToast(null), 2500);
+    };
+
+    // Student sort state
+    const [sortKey, setSortKey] = useState('name');
+    const [sortDir, setSortDir] = useState('asc');
+    const handleSort = (key) => {
+        if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+        else { setSortKey(key); setSortDir('asc'); }
+    };
+    const sortedStudents = [...(gameState.students || [])].sort((a, b) => {
+        let va, vb;
+        if (sortKey === 'name') { va = (a.name || '').split(' ').slice(-1)[0].toLowerCase(); vb = (b.name || '').split(' ').slice(-1)[0].toLowerCase(); }
+        else if (sortKey === 'house') { va = a.house || ''; vb = b.house || ''; }
+        else if (sortKey === 'course') { va = a.course || 0; vb = b.course || 0; }
+        else if (sortKey === 'xp') { va = a.xp || 0; vb = b.xp || 0; }
+        else { va = ''; vb = ''; }
+        if (va < vb) return sortDir === 'asc' ? -1 : 1;
+        if (va > vb) return sortDir === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    const SortIcon = ({ col }) => {
+        if (sortKey !== col) return <ArrowUpDown size={12} style={{ opacity: 0.4 }} />;
+        return sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />;
+    };
+
+
     const handleAddPoints = () => {
         addPoints(selectedHouse, parseInt(pointsToAdd));
-        alert(`${pointsToAdd} puntos añadidos a ${selectedHouse}`);
+        showToast(`✅ ${pointsToAdd} puntos añadidos a ${selectedHouse}`);
     };
 
     const handleEditClick = (student) => {
         setEditingStudent({ ...student });
     };
 
+    const handleRoleCourseChange = (val) => {
+        if (!editingStudent) return;
+        if (val === 'director') {
+            setEditingStudent({ ...editingStudent, role: 'director', course: 1 });
+        } else if (val === 'graduado') {
+            setEditingStudent({ ...editingStudent, role: 'guardian', course: 'graduado' });
+        } else {
+            setEditingStudent({ ...editingStudent, role: 'student', course: parseInt(val) });
+        }
+    };
+
     const handleSaveStudent = () => {
         if (editingStudent) {
-            updateUser(editingStudent.id, editingStudent);
+            editStudent(editingStudent.id, editingStudent);
             setEditingStudent(null);
         }
     };
@@ -202,7 +252,26 @@ const DirectorDashboard = () => {
     };
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', position: 'relative' }}>
+            {/* Toast Notification */}
+            {toast && (
+                <div style={{
+                    position: 'fixed', bottom: '2rem', right: '2rem', zIndex: 9999,
+                    background: toast.color, color: 'black', padding: '0.75rem 1.5rem',
+                    borderRadius: '8px', fontWeight: 'bold', fontSize: '0.95rem',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                    animation: 'slideInRight 0.3s ease',
+                    display: 'flex', alignItems: 'center', gap: '0.5rem'
+                }}>
+                    {toast.msg}
+                </div>
+            )}
+            <style>{`
+                @keyframes slideInRight {
+                    from { transform: translateX(100px); opacity: 0; }
+                    to { transform: translateX(0); opacity: 1; }
+                }
+            `}</style>
             <h2>Panel de Dirección</h2>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
@@ -238,7 +307,16 @@ const DirectorDashboard = () => {
                             <input
                                 type="file"
                                 ref={fileInputRef}
-                                style={{ display: 'none' }}
+                                style={{ 
+                                    position: 'absolute',
+                                    width: '1px',
+                                    height: '1px',
+                                    padding: '0',
+                                    margin: '-1px',
+                                    overflow: 'hidden',
+                                    clip: 'rect(0,0,0,0)',
+                                    border: '0'
+                                }}
                                 accept="image/*"
                                 onChange={handleDirectorPhotoUpload}
                             />
@@ -265,7 +343,16 @@ const DirectorDashboard = () => {
                                 Subir Mascota
                                 <input
                                     type="file"
-                                    style={{ display: 'none' }}
+                                    style={{ 
+                                        position: 'absolute',
+                                        width: '1px',
+                                        height: '1px',
+                                        padding: '0',
+                                        margin: '-1px',
+                                        overflow: 'hidden',
+                                        clip: 'rect(0,0,0,0)',
+                                        border: '0'
+                                    }}
                                     accept="image/*"
                                     onChange={async (e) => {
                                         const file = e.target.files[0];
@@ -281,6 +368,19 @@ const DirectorDashboard = () => {
                                 />
                             </label>
                         </div>
+                    </div>
+                    {/* Pet Name Editor */}
+                    <div style={{ width: '100%', marginTop: '1rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: '#aaa', fontSize: '0.9rem' }}>Nombre de la Mascota:</label>
+                        <input
+                            type="text"
+                            value={gameState.directorStats.petName || ''}
+                            onChange={(e) => updateDirectorStat('petName', e.target.value)}
+                            placeholder="Ej: Hipogrifo"
+                            style={{
+                                width: '100%', background: '#222', border: '1px solid #444', color: 'white', padding: '0.5rem', borderRadius: '4px', fontSize: '0.9rem'
+                            }}
+                        />
                     </div>
                     {/* Pet Story Editor */}
                     <div style={{ marginTop: '1rem', borderTop: '1px solid #333', paddingTop: '1rem' }}>
@@ -349,7 +449,16 @@ const DirectorDashboard = () => {
                             Subir Planta
                             <input
                                 type="file"
-                                style={{ display: 'none' }}
+                                style={{ 
+                                    position: 'absolute',
+                                    width: '1px',
+                                    height: '1px',
+                                    padding: '0',
+                                    margin: '-1px',
+                                    overflow: 'hidden',
+                                    clip: 'rect(0,0,0,0)',
+                                    border: '0'
+                                }}
                                 accept="image/*"
                                 onChange={async (e) => {
                                     const file = e.target.files[0];
@@ -364,6 +473,20 @@ const DirectorDashboard = () => {
                                 }}
                             />
                         </label>
+
+                        {/* Plant Name Editor */}
+                        <div style={{ width: '100%', marginBottom: '1rem' }}>
+                            <label style={{ display: 'block', marginBottom: '0.5rem', color: '#aaa', fontSize: '0.9rem' }}>Nombre de la Planta:</label>
+                            <input
+                                type="text"
+                                value={gameState.directorStats.plantName || ''}
+                                onChange={(e) => updateDirectorStat('plantName', e.target.value)}
+                                placeholder="Ej: Mandrágora"
+                                style={{
+                                    width: '100%', background: '#222', border: '1px solid #444', color: 'white', padding: '0.5rem', borderRadius: '4px', fontSize: '0.9rem'
+                                }}
+                            />
+                        </div>
 
                         {/* Plant Story Editor */}
                         <div style={{ width: '100%', marginTop: '0.5rem' }}>
@@ -735,23 +858,17 @@ const DirectorDashboard = () => {
                                 />
                                 Mostrar en el Hall
                             </label>
-                            <button
-                                onClick={() => {
-                                    const msg = document.getElementById('noticeMessage').value;
-                                    const active = document.getElementById('noticeActive').checked;
-                                    // Use context function updateNoticeBoard (must be destructured from useGame)
-                                    // Oh wait, I need to make sure updateNoticeBoard is available in the component scope.
-                                    // It is not currently destructured in line 91. I will assume it is injected or I need to update imports.
-                                    // I'll update line 91 in a separate edit or use window/alert if failed? No, I should fix line 91.
-                                    // Let's rely on the next Replace call to fix line 91.
-                                    // For now, I'll assume `updateNoticeBoard` is available.
-                                    updateNoticeBoard(msg, active);
-                                    alert("Tablón actualizado.");
-                                }}
-                                className="button-primary"
-                            >
-                                ACTUALIZAR TABLÓN
-                            </button>
+                        <button
+                            onClick={() => {
+                                const msg = document.getElementById('noticeMessage').value;
+                                const active = document.getElementById('noticeActive').checked;
+                                updateNoticeBoard(msg, active);
+                                showToast('✅ Tablón actualizado.');
+                            }}
+                            className="button-primary"
+                        >
+                            ACTUALIZAR TABLÓN
+                        </button>
                         </div>
                     </div>
                 </div>
@@ -833,49 +950,200 @@ const DirectorDashboard = () => {
                         >
                             ⏳ Resetear Reloj Director
                         </button>
+                        
+                        <button
+                            onClick={() => {
+                                if (window.confirm("¿Ejecutar Ceremonia de Paso de Año Escolar? Esto avanzará el año/curso de todos los alumnos activos en 1 grado, y graduará a los de 6º año a Guardianes.")) {
+                                    advanceSchoolYear();
+                                    alert("¡La ceremonia ha concluido! Los alumnos han avanzado de año.");
+                                }
+                            }}
+                            style={{ padding: '0.8rem', background: 'linear-gradient(135deg, #d4af37 0%, #aa7c11 100%)', border: 'none', color: 'black', fontWeight: 'bold', cursor: 'pointer', borderRadius: '4px' }}
+                        >
+                            ✨ Ceremonia de Paso de Año Escolar
+                        </button>
+                    </div>
+                </div>
+
+                {/* 5. Magic Classroom Management */}
+                <div className="card" style={{ border: '1px solid var(--color-gold)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: 'var(--color-gold)' }}>
+                        <Sparkles />
+                        <h3>Aula de Magia</h3>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <p style={{ fontSize: '0.9rem', color: '#ccc' }}>
+                            Estado actual: <strong>{gameState.magicClassroomActive ? '🟢 ACTIVA' : '🔒 DESACTIVADA'}</strong>
+                        </p>
+                        <button
+                            onClick={toggleMagicClassroom}
+                            style={{
+                                padding: '0.8rem',
+                                background: gameState.magicClassroomActive ? 'var(--color-danger)' : 'var(--color-gold)',
+                                color: gameState.magicClassroomActive ? 'white' : 'black',
+                                border: 'none',
+                                fontWeight: 'bold',
+                                cursor: 'pointer',
+                                borderRadius: '4px'
+                            }}
+                        >
+                            {gameState.magicClassroomActive ? 'Desactivar Aula de Magia' : 'Activar Aula de Magia'}
+                        </button>
+                    </div>
+                </div>
+
+                {/* --- SECCIÓN: Interruptores de Actividades --- */}
+                <div className="card" style={{ border: '1px solid #7c3aed' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: '#c084fc' }}>
+                        <ToggleRight size={20} />
+                        <h3 style={{ margin: 0 }}>Actividades Activas</h3>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                        {[
+                            { key: 'plant', label: '🌿 Planta del Mes' },
+                            { key: 'pet', label: '🐾 Mascota' },
+                            { key: 'breakfast', label: '☕ Desayuno' },
+                            { key: 'art', label: '🎨 Momento Artístico' },
+                            { key: 'candle', label: '🕯️ Vela de Sabiduría' },
+                            { key: 'reading', label: '📖 Lectura Encantada' },
+                            { key: 'challenge', label: '🧙‍♂️ Desafío del Director' },
+                            { key: 'trivia', label: '🔮 Incógnita Diaria' },
+                        ].map(({ key, label }) => {
+                            const isOn = gameState.activityToggles?.[key] !== false;
+                            return (
+                                <button
+                                    key={key}
+                                    onClick={() => {
+                                        toggleActivity(key);
+                                        showToast(`${isOn ? '🔴' : '🟢'} ${label} ${isOn ? 'desactivada' : 'activada'}`, isOn ? '#e74c3c' : '#2ecc71');
+                                    }}
+                                    style={{
+                                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                        padding: '0.6rem 0.8rem',
+                                        background: isOn ? 'rgba(46,204,113,0.1)' : 'rgba(231,76,60,0.1)',
+                                        border: `1px solid ${isOn ? '#2ecc71' : '#e74c3c'}`,
+                                        borderRadius: '6px', cursor: 'pointer', color: 'white',
+                                        fontSize: '0.82rem', fontWeight: 500,
+                                        transition: 'all 0.2s ease'
+                                    }}
+                                >
+                                    <span>{label}</span>
+                                    {isOn ? <ToggleRight size={18} color="#2ecc71" /> : <ToggleLeft size={18} color="#e74c3c" />}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* 6. Communications / Chats Management */}
+                <div className="card" style={{ border: '1px solid var(--color-hipocampus)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: 'var(--color-hipocampus)' }}>
+                        <Feather />
+                        <h3>Chats de las Casas</h3>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {['phoenix', 'vipera', 'unicornius', 'hipocampus'].map(house => {
+                            const isActive = gameState.houseChatsStatus?.[house] !== false;
+                            return (
+                                <div key={house} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #333' }}>
+                                    <span style={{ textTransform: 'capitalize', fontWeight: 'bold', color: `var(--color-${house})` }}>
+                                        {house}: {isActive ? '🟢 Activo' : '🔴 Inactivo'}
+                                    </span>
+                                    <button
+                                        onClick={() => {
+                                            toggleHouseChatStatus(house);
+                                            showToast(`${isActive ? '🔴' : '🟢'} Chat ${house} ${isActive ? 'desactivado' : 'activado'}`, isActive ? '#e74c3c' : '#2ecc71');
+                                        }}
+                                        style={{
+                                            padding: '0.4rem 0.8rem',
+                                            background: '#333', border: '1px solid #555',
+                                            color: isActive ? 'var(--color-danger)' : 'var(--color-gold)',
+                                            borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem'
+                                        }}
+                                    >
+                                        {isActive ? 'Desactivar' : 'Activar'}
+                                    </button>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
 
             </div >
 
             {/* 4. Student Management */}
-            < div className="card" >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
-                    <h3>Estudiantes</h3>
-                    <button style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem', background: 'var(--color-vipera)', border: 'none', borderRadius: '4px', color: 'white' }}>
-                        <UserPlus size={16} /> Añadir
-                    </button>
+            <div className="card">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <h3>Estudiantes ({gameState.students?.length || 0})</h3>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <span style={{ fontSize: '0.75rem', color: '#888' }}>Ordenar por:</span>
+                        {[{ k: 'name', l: 'Apellido' }, { k: 'house', l: 'Casa' }, { k: 'course', l: 'Curso' }, { k: 'xp', l: 'XP' }].map(({ k, l }) => (
+                            <button key={k} onClick={() => handleSort(k)} style={{
+                                display: 'flex', alignItems: 'center', gap: '0.25rem',
+                                padding: '0.3rem 0.6rem', fontSize: '0.75rem',
+                                background: sortKey === k ? '#7c3aed' : '#333',
+                                border: `1px solid ${sortKey === k ? '#a855f7' : '#555'}`,
+                                color: 'white', borderRadius: '4px', cursor: 'pointer'
+                            }}>
+                                {l} <SortIcon col={k} />
+                            </button>
+                        ))}
+                    </div>
                 </div>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '620px' }}>
                     <thead>
                         <tr style={{ borderBottom: '1px solid #444', textAlign: 'left' }}>
                             <th style={{ padding: '0.5rem' }}>Nombre</th>
                             <th style={{ padding: '0.5rem' }}>Casa</th>
-                            <th style={{ padding: '0.5rem' }}>Nivel</th>
+                            <th style={{ padding: '0.5rem' }}>Curso</th>
                             <th style={{ padding: '0.5rem' }}>XP</th>
                             <th style={{ padding: '0.5rem' }}>Acciones</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {gameState.students.filter(s => s.role !== 'director').map(std => (
+                        {sortedStudents.map(std => (
                             <tr key={std.id} style={{ borderBottom: '1px solid #333' }}>
-                                <td style={{ padding: '0.5rem' }}>{std.name}</td>
-                                <td style={{ padding: '0.5rem', textTransform: 'capitalize', color: `var(--color-${std.house})` }}>{std.house}</td>
-                                <td style={{ padding: '0.5rem' }}>{std.level}</td>
-                                <td style={{ padding: '0.5rem' }}>{std.xp}</td>
-                                <td style={{ padding: '0.5rem', display: 'flex', gap: '0.5rem' }}>
-                                    <button onClick={() => handleEditClick(std)} style={{ background: 'none', border: 'none', color: 'var(--color-text-main)', cursor: 'pointer' }}>
-                                        <Edit size={16} />
-                                    </button>
-                                    <button style={{ background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer' }}>
-                                        <Trash2 size={16} />
-                                    </button>
+                                <td style={{ padding: '0.5rem', fontSize: '0.85rem' }}>{std.name}</td>
+                                <td style={{ padding: '0.5rem', textTransform: 'capitalize', color: `var(--color-${std.house})`, fontSize: '0.85rem' }}>{std.house}</td>
+                                <td style={{ padding: '0.5rem', fontSize: '0.85rem' }}>{std.course || '-'}</td>
+                                <td style={{ padding: '0.5rem', fontWeight: 'bold', color: 'var(--color-gold)', fontSize: '0.85rem' }}>{std.xp}</td>
+                                <td style={{ padding: '0.5rem' }}>
+                                    <div style={{ display: 'flex', gap: '0.3rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                                        <button
+                                            onClick={() => { adjustStudentXP(std.id, 10); showToast(`+10 XP → ${std.name}`); }}
+                                            style={{ padding: '0.2rem 0.5rem', background: 'rgba(46,204,113,0.2)', border: '1px solid #2ecc71', color: '#2ecc71', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.75rem' }}
+                                            title="+10 XP"
+                                        >+10</button>
+                                        <button
+                                            onClick={() => { adjustStudentXP(std.id, -10); showToast(`-10 XP → ${std.name}`, '#e74c3c'); }}
+                                            style={{ padding: '0.2rem 0.5rem', background: 'rgba(231,76,60,0.2)', border: '1px solid #e74c3c', color: '#e74c3c', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.75rem' }}
+                                            title="-10 XP"
+                                        >-10</button>
+                                        <button onClick={() => handleEditClick(std)} style={{ background: 'none', border: 'none', color: 'var(--color-text-main)', cursor: 'pointer' }} title="Editar">
+                                            <Edit size={15} />
+                                        </button>
+                                        <button
+                                            onClick={() => { restoreEnergy(std.id); showToast(`⚡ Energía restaurada: ${std.name}`); }}
+                                            style={{ background: 'none', border: 'none', color: '#c084fc', cursor: 'pointer' }}
+                                            title="Restaurar Energía"
+                                        >
+                                            <Zap size={15} fill="#c084fc" />
+                                        </button>
+                                        {std.role !== 'director' && (
+                                            <button style={{ background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer' }} title="Eliminar">
+                                                <Trash2 size={15} />
+                                            </button>
+                                        )}
+                                    </div>
                                 </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
-            </div >
+                </div>
+            </div>
+
 
             {/* Edit Modal */}
             {
@@ -922,6 +1190,29 @@ const DirectorDashboard = () => {
                                         <option value="vipera">Vipera</option>
                                     </select>
                                 </label>
+                                <label>
+                                    Año / Rol:
+                                    <select
+                                        value={
+                                            editingStudent.role === 'director'
+                                                ? 'director'
+                                                : editingStudent.role === 'guardian'
+                                                ? 'graduado'
+                                                : editingStudent.course || 1
+                                        }
+                                        onChange={e => handleRoleCourseChange(e.target.value)}
+                                        style={{ width: '100%', padding: '0.5rem', marginTop: '0.2rem', background: '#333', border: '1px solid #555', color: 'white' }}
+                                    >
+                                        <option value="1">1º Año</option>
+                                        <option value="2">2º Año</option>
+                                        <option value="3">3º Año</option>
+                                        <option value="4">4º Año</option>
+                                        <option value="5">5º Año</option>
+                                        <option value="6">6º Año</option>
+                                        <option value="graduado">Guardián (Graduado)</option>
+                                        <option value="director">Director</option>
+                                    </select>
+                                </label>
                                 <div style={{ display: 'flex', gap: '1rem' }}>
                                     <label style={{ flex: 1 }}>
                                         Nivel:
@@ -965,6 +1256,63 @@ const DirectorDashboard = () => {
                 )
             }
 
+            {/* 5. Flying Messages (Director Only) */}
+            <div className="card" style={{ marginTop: '2rem', border: '1px solid var(--color-gold)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                    <Feather color="var(--color-gold)" size={24} />
+                    <h3 style={{ margin: 0, color: 'var(--color-gold)' }}>Mensajes Voladores Recibidos</h3>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {gameState.flyingMessages?.length === 0 ? (
+                        <div style={{ textAlign: 'center', color: '#666', fontStyle: 'italic', padding: '2rem' }}>
+                            No hay mensajes nuevos en la torre...
+                        </div>
+                    ) : (
+                        gameState.flyingMessages?.map((msg) => (
+                            <div key={msg.id} style={{
+                                background: 'rgba(255,215,0,0.05)',
+                                border: '1px solid rgba(255,215,0,0.2)',
+                                borderRadius: '12px',
+                                padding: '1rem',
+                                display: 'flex',
+                                gap: '1rem',
+                                position: 'relative'
+                            }}>
+                                <img
+                                    src={msg.avatar}
+                                    alt={msg.senderName}
+                                    style={{ width: '40px', height: '40px', borderRadius: '50%', border: '1px solid var(--color-gold)' }}
+                                />
+                                <div style={{ flex: 1 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                                        <span style={{ fontWeight: 'bold', color: 'var(--color-gold)', fontSize: '0.9rem' }}>
+                                            {msg.senderName}
+                                        </span>
+                                        <span style={{ fontSize: '0.7rem', color: '#666' }}>
+                                            {new Date(msg.timestamp).toLocaleString()}
+                                        </span>
+                                    </div>
+                                    <p style={{ margin: 0, color: '#ddd', fontSize: '0.95rem' }}>
+                                        {msg.text}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => deleteFlyingMessage(msg.id)}
+                                    style={{
+                                        background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer',
+                                        alignSelf: 'flex-start', padding: '0.2rem'
+                                    }}
+                                    title="Archivar"
+                                >
+                                    <Trash2 size={16} />
+                                </button>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+
         </div >
     );
 };
@@ -976,7 +1324,7 @@ const TriviaCreatorForm = () => {
     const [question, setQuestion] = React.useState('');
     const [options, setOptions] = React.useState(['', '', '', '']);
     const [correctAnswer, setCorrectAnswer] = React.useState(0);
-    const [image, setImage] = React.useState(null);
+    const [image, setImage] = React.useState(gameState.dailyTrivia?.image || null);
     const [saved, setSaved] = React.useState(false);
 
     const [loading, setLoading] = React.useState(false);

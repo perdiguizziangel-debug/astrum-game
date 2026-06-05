@@ -28,8 +28,6 @@ const DailyChallenge = () => {
         setRevealed(true);
     };
 
-    const isDirector = currentUser?.role === 'director';
-
     const containerStyle = {
         background: 'rgba(15, 12, 5, 0.95)',
         border: '2px solid rgba(212, 175, 55, 0.4)',
@@ -246,7 +244,7 @@ const DailyChallenge = () => {
                                     opacity: !userAnswer ? 0.3 : 1, transition: 'all 0.3s'
                                 }}
                             >
-                                {isDirector ? 'Vista Previa (Enviar)' : 'Enviar Respuesta'}
+                                Enviar Respuesta
                             </button>
                         </>
                     ) : (
@@ -269,12 +267,6 @@ const DailyChallenge = () => {
                         </div>
                     )}
                 </div>
-
-                {isDirector && (
-                    <div style={{ marginTop: '1.5rem', textAlign: 'center', color: '#d97706', fontSize: '0.8rem', opacity: 0.6 }}>
-                        Modo Vista Previa (Director)
-                    </div>
-                )}
             </div>
         </div>
     );

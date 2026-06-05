@@ -19,18 +19,20 @@ const INITIAL_STATE = {
         knowledge: 9,
         perfumeOfTheDay: "Sándalo y Vainilla",
         outfitOfTheDay: "Túnica Gris Perla",
-        perfumeRating: 0, // Average rating
-        outfitRating: 0, // Average rating
+        perfumeRating: 0,
+        outfitRating: 0,
         outputsRating: 0,
-        avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Director&clothing=graphicShirt&hairColor=black",
-        pet: null, // URL of the pet image
-        petStory: "Esta criatura apareció en los terrenos del colegio...", // Default story
-        plant: null, // URL of the plant image
-        plantStory: "Esta planta mágica fue descubierta en los invernaderos...", // Default story
-        lecturaEncantada: null, // URL of the book image
-        lecturaEncantadaStory: "El libro de hoy guarda secretos entre sus páginas...", // Default story
-        votes: {}, // { userId: { intelligence: 5, ... } }
-        directorScore: 85 // Initial "Empathy" score/percentage
+        avatar: "/src/assets/alaric_storm.jpg",
+        pet: null,
+        petName: "Mascota",
+        petStory: "Esta criatura apareció en los terrenos del colegio...",
+        plant: null,
+        plantName: "Planta",
+        plantStory: "Esta planta mágica fue descubierta en los invernaderos...",
+        lecturaEncantada: null,
+        lecturaEncantadaStory: "El libro de hoy guarda secretos entre sus páginas...",
+        votes: {},
+        directorScore: 85
     },
     houseCupHistory: {
         lastWinner: 'phoenix',
@@ -48,7 +50,7 @@ const INITIAL_STATE = {
         { id: 3, name: "Cedrico Bright", email: "cedric@astrum.edu", password: "123", house: "unicornius", level: 6, xp: 520, avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Cedric", wand: { wood: "Fresno", core: "Unicornio" }, birthday: "1989-10-20", streakAttendance: 0, totalAttendance: 0, streakVoting: 0, greekAlphabetLevel: 0, coins: 80, puzzlesSolved: 5, triviaSolved: 0, challengesSolved: 0, strength: { current: 100, max: 100 }, wisdom: { points: 50, level: 2 }, course: 2 },
         { id: 4, name: "Nerea Water", email: "nerea@astrum.edu", password: "123", house: "hipocampus", level: 3, xp: 290, avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Nerea", wand: { wood: "Sauce", core: "Pelo de Veela" }, birthday: "1991-02-14", streakAttendance: 0, totalAttendance: 0, streakVoting: 0, greekAlphabetLevel: 0, coins: 10, puzzlesSolved: 0, triviaSolved: 0, challengesSolved: 0, strength: { current: 60, max: 100 }, wisdom: { points: 5, level: 1 }, course: 1 },
         // Director Account
-        { id: 999, name: "Magister Ludi", email: "director@astrum.edu", password: "121179", house: "phoenix", level: 99, xp: 99999, avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Director", role: 'director', triviaSolved: 0, challengesSolved: 0 }
+        { id: 999, name: "Magnus Magister", email: "perdiguizzi.angel@escuelamartinguemes.com", password: "121179", house: "phoenix", level: 1, xp: 0, avatar: "/src/assets/alaric_storm.jpg", role: 'director', triviaSolved: 0, challengesSolved: 0, coins: 0, puzzlesSolved: 0, totalAttendance: 0, streakAttendance: 0, streakVoting: 0, greekAlphabetLevel: 0, strength: { current: 100, max: 100 }, lastEnergyRegen: Date.now(), wisdom: { points: 0, level: 1 }, course: 1 }
     ],
     dailyChallenge: {
         id: 'default',
@@ -79,32 +81,61 @@ const INITIAL_STATE = {
         unicornius: [],
         hipocampus: []
     },
-    currentUser: null, // Simulate login
-    lastPromotionYear: 0, // Tracks the last calendar year a promotion occurred
-    activeEvent: null, // { type, hp, maxHp, participants: { userId: amount }, status: 'active'|'victory'|'defeat' }
+    houseChatsStatus: {
+        phoenix: true,
+        vipera: true,
+        unicornius: true,
+        hipocampus: true
+    },
+    magicClassroomActive: false,
+    flyingMessages: [],
+    celebrationMessages: [],
+    currentUser: null,
+    lastPromotionYear: 0,
+    activeEvent: null,
+    activityToggles: {
+        plant: true,
+        pet: true,
+        breakfast: true,
+        art: true,
+        candle: true,
+        reading: true,
+        challenge: true,
+        trivia: true,
+    },
 };
 
 export const GameProvider = ({ children }) => {
     const [gameState, setGameState] = useState(INITIAL_STATE);
     const [isLoading, setIsLoading] = useState(true);
-    const BLOB_URL = 'https://jsonblob.com/api/jsonBlob/019e1447-9398-7181-b95b-2fcc4589f0c0';
+    const [isViewingAsUser, setIsViewingAsUser] = useState(false);
+    const BLOB_URL = 'https://jsonblob.com/api/jsonBlob/019e28cc-991d-70ac-b328-ac5d8ae26c63';
 
     useEffect(() => {
         const fetchState = async () => {
             try {
                 const response = await fetch(BLOB_URL);
+                let cloudData = null;
                 if (response.ok) {
-                    const parsed = await response.json();
-                    if (Object.keys(parsed).length > 0) {
-                        setGameState({ ...INITIAL_STATE, ...parsed, noticeBoard: parsed.noticeBoard || INITIAL_STATE.noticeBoard, directorStats: { ...INITIAL_STATE.directorStats, ...parsed.directorStats } });
-                    } else {
-                         // initialize blob
-                         await fetch(BLOB_URL, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                            body: JSON.stringify(INITIAL_STATE)
-                         });
-                    }
+                    cloudData = await response.json();
+                }
+
+                const savedLocal = localStorage.getItem('astrum_gamestate');
+                const localData = savedLocal ? JSON.parse(savedLocal) : null;
+
+                // Si la nube está vacía o es nueva (pocas keys) pero tenemos datos locales, priorizar los locales para restaurar
+                if ((!cloudData || Object.keys(cloudData).length < 5) && localData) {
+                    console.log("Restaurando estado desde localStorage a la nube...");
+                    setGameState({ ...INITIAL_STATE, ...localData });
+                } else if (cloudData && Object.keys(cloudData).length >= 5) {
+                    setGameState({ ...INITIAL_STATE, ...cloudData, noticeBoard: cloudData.noticeBoard || INITIAL_STATE.noticeBoard, directorStats: { ...INITIAL_STATE.directorStats, ...cloudData.directorStats } });
+                } else {
+                     // Ambos vacíos, inicializar blob con el estado por defecto
+                     await fetch(BLOB_URL, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                        body: JSON.stringify(INITIAL_STATE)
+                     });
                 }
             } catch (e) {
                 console.error("Error loading state from cloud:", e);
@@ -170,78 +201,161 @@ export const GameProvider = ({ children }) => {
                 changed = true;
             }
 
+            // Ensure flyingMessages exists
+            if (!prev.flyingMessages) {
+                updates.flyingMessages = [];
+                changed = true;
+            }
+
+            // Ensure celebrationMessages exists
+            if (!prev.celebrationMessages) {
+                updates.celebrationMessages = [];
+                changed = true;
+            }
+
+            // Ensure houseChatsStatus exists
+            if (!prev.houseChatsStatus) {
+                updates.houseChatsStatus = INITIAL_STATE.houseChatsStatus;
+                changed = true;
+            }
+
+            // Ensure magicClassroomActive exists
+            if (prev.magicClassroomActive === undefined) {
+                updates.magicClassroomActive = false;
+                changed = true;
+            }
+
+            // Ensure activityToggles exists
+            if (!prev.activityToggles) {
+                updates.activityToggles = INITIAL_STATE.activityToggles;
+                changed = true;
+            }
+
+            // Sync director user data (Migration to Magnus Magister)
+            const dirIndex = prev.students.findIndex(s => s.role === 'director' || s.id === 999);
+            if (dirIndex !== -1) {
+                const s = prev.students[dirIndex];
+                const dirAvatar = prev.directorStats?.avatar || "/src/assets/alaric_storm.jpg";
+                const needsUpdate = s.name === "Angel Perdiguizzi" || !s.lastEnergyRegen || s.avatar !== dirAvatar;
+                if (needsUpdate) {
+                    updates.students = [...prev.students];
+                    updates.students[dirIndex] = {
+                        ...s,
+                        name: s.name === "Angel Perdiguizzi" ? "Magnus Magister" : s.name,
+                        email: "perdiguizzi.angel@escuelamartinguemes.com",
+                        avatar: dirAvatar,
+                        coins: s.coins || 0,
+                        strength: s.strength || { current: 100, max: 100 },
+                        lastEnergyRegen: s.lastEnergyRegen || Date.now(),
+                        wisdom: s.wisdom || { points: 0, level: 1 },
+                        course: s.course || 1
+                    };
+                    if (prev.currentUser?.role === 'director') {
+                        updates.currentUser = { ...prev.currentUser, ...updates.students[dirIndex] };
+                    }
+                    changed = true;
+                }
+            }
+
+            // Ensure all students have lastEnergyRegen
+            const studentsNeedRegen = prev.students.some(s => !s.lastEnergyRegen);
+            if (studentsNeedRegen) {
+                updates.students = (updates.students || [...prev.students]).map(s => ({
+                    ...s,
+                    lastEnergyRegen: s.lastEnergyRegen || Date.now()
+                }));
+                changed = true;
+            }
+
             if (changed) {
                 return { ...prev, ...updates };
             }
             return prev;
         });
-
-        // --- AUTOMATIC PROMOTION CHECK ---
-        checkAnnualPromotion();
     }, []);
 
-    const checkAnnualPromotion = () => {
-        setGameState(prev => {
-            // Get current time in Argentina
-            const now = new Date();
-            const formatter = new Intl.DateTimeFormat('es-AR', {
-                timeZone: 'America/Argentina/Buenos_Aires',
-                year: 'numeric',
-                month: 'numeric',
-                day: 'numeric'
-            });
-            const parts = formatter.formatToParts(now);
-            const getPart = (type) => parseInt(parts.find(p => p.type === type).value);
+    // ============================================================
+    // ENERGY REGENERATION: 1 point per minute, passive over time
+    // ============================================================
+    const regenEnergyForStudent = (student) => {
+        const now = Date.now();
+        const lastRegen = student.lastEnergyRegen || now;
+        const minutesPassed = Math.floor((now - lastRegen) / 60000); // 1 min = 60000ms
+        if (minutesPassed < 1) return student; // No change
+        const currentEnergy = student.strength?.current ?? 100;
+        const maxEnergy = student.strength?.max ?? 100;
+        const newEnergy = Math.min(maxEnergy, currentEnergy + minutesPassed);
+        if (newEnergy === currentEnergy) return student;
+        return {
+            ...student,
+            strength: { ...student.strength, current: newEnergy },
+            lastEnergyRegen: now
+        };
+    };
 
-            const currentYear = getPart('year');
-            const currentMonth = getPart('month');
-            const currentDay = getPart('day');
+    // Passive Energy Regeneration Hook (Real-time and On Load)
+    useEffect(() => {
+        if (isLoading) return;
 
-            // Promotion Date: February 20th
-            const isPromotionTime = (currentMonth > 2) || (currentMonth === 2 && currentDay >= 20);
+        const performRegen = () => {
+            setGameState(prev => {
+                if (!prev.currentUser) return prev;
+                const idx = prev.students.findIndex(s => s.id === prev.currentUser.id);
+                if (idx === -1) return prev;
 
-            // If it's promotion time for THIS year, and we haven't done it yet
-            if (isPromotionTime && prev.lastPromotionYear < currentYear) {
-                console.log("✨ EJECUTANDO CEREMONIA DE PASO DE AÑO... ✨");
+                const currentStudent = prev.students[idx];
+                const updatedStudent = regenEnergyForStudent(currentStudent);
+                if (updatedStudent === currentStudent) return prev;
 
-                const updatedStudents = prev.students.map(s => {
-                    if (s.role === 'student') {
-                        const currentCourse = s.course || 1;
-                        if (currentCourse < 6) {
-                            return {
-                                ...s,
-                                course: currentCourse + 1,
-                                totalAttendance: 0,
-                                streakAttendance: 0,
-                                streakVoting: 0
-                            };
-                        } else {
-                            // Graduate
-                            return {
-                                ...s,
-                                role: 'guardian',
-                                course: 'graduado',
-                                totalAttendance: 0,
-                                streakAttendance: 0
-                            };
-                        }
-                    }
-                    return s;
-                });
+                const updatedStudents = [...prev.students];
+                updatedStudents[idx] = updatedStudent;
+
+                const updatedCurrentUser = prev.currentUser?.id === updatedStudent.id ? updatedStudent : prev.currentUser;
 
                 return {
                     ...prev,
                     students: updatedStudents,
-                    lastPromotionYear: currentYear,
-                    noticeBoard: {
-                        message: `¡Atención! El Ciclo Escolar ha avanzado. ¡Felicidades a todos los alumnos por pasar de año y a nuestros nuevos graduados! 🎓✨`,
-                        active: true,
-                        lastUpdated: Date.now()
-                    },
-                    annualCelebration: true
+                    currentUser: updatedCurrentUser
                 };
-            }
-            return prev;
+            });
+        };
+
+        // Run once on load
+        performRegen();
+
+        // Run every 10 seconds to detect minute boundaries quickly
+        const interval = setInterval(performRegen, 10000);
+        return () => clearInterval(interval);
+    }, [isLoading, gameState.currentUser?.id]);
+
+    // ============================================================
+    // MANUAL SCHOOL YEAR ADVANCEMENT (replaces automatic check)
+    // ============================================================
+    const advanceSchoolYear = () => {
+        setGameState(prev => {
+            const currentYear = new Date().getFullYear();
+            const updatedStudents = prev.students.map(s => {
+                if (s.role === 'student') {
+                    const currentCourse = s.course || 1;
+                    if (currentCourse < 6) {
+                        return { ...s, course: currentCourse + 1, totalAttendance: 0, streakAttendance: 0, streakVoting: 0 };
+                    } else {
+                        return { ...s, role: 'guardian', course: 'graduado', totalAttendance: 0, streakAttendance: 0 };
+                    }
+                }
+                return s;
+            });
+            return {
+                ...prev,
+                students: updatedStudents,
+                lastPromotionYear: currentYear,
+                noticeBoard: {
+                    message: `¡Atención! El Ciclo Escolar ha avanzado. ¡Felicidades a todos los alumnos por pasar de año y a nuestros nuevos graduados! 🎓✨`,
+                    active: true,
+                    lastUpdated: Date.now()
+                },
+                annualCelebration: true
+            };
         });
     };
 
@@ -325,48 +439,65 @@ export const GameProvider = ({ children }) => {
         }));
     };
 
-    // Only for Director use (modifying text/image)
-    // Daily Trivia Logic
+    // Daily Trivia Logic - everyone including director earns points
     const submitTriviaAnswer = (userId, optionIndex) => {
         setGameState(prev => {
             const trivia = prev.dailyTrivia;
-            if (trivia.solvedBy.includes(userId)) return prev; // Already answered
+            if (trivia.solvedBy.includes(userId)) return prev;
 
             const isCorrect = optionIndex === trivia.correctAnswer;
             const newSolvedBy = [...trivia.solvedBy, userId];
 
-            // If correct, award 10 points to student and increment triviaSolved
             let updatedStudents = prev.students;
             if (isCorrect) {
                 updatedStudents = prev.students.map(s => {
                     if (s.id === userId) {
-                        return { ...s, xp: s.xp + 10, coins: s.coins + 5, triviaSolved: (s.triviaSolved || 0) + 1 };
+                        // +10 energy on correct trivia
+                        const newEnergy = Math.min(s.strength?.max ?? 100, (s.strength?.current ?? 100) + 10);
+                        return {
+                            ...s,
+                            xp: s.xp + 10,
+                            coins: (s.coins || 0) + 5,
+                            triviaSolved: (s.triviaSolved || 0) + 1,
+                            strength: { ...s.strength, current: newEnergy },
+                            lastEnergyRegen: Date.now()
+                        };
                     }
                     return s;
                 });
             }
 
+            const updatedCurrentUser = prev.currentUser?.id === userId
+                ? updatedStudents.find(s => s.id === userId)
+                : prev.currentUser;
+
             return {
                 ...prev,
                 students: updatedStudents,
-                dailyTrivia: {
-                    ...trivia,
-                    solvedBy: newSolvedBy
-                }
+                currentUser: updatedCurrentUser,
+                dailyTrivia: { ...trivia, solvedBy: newSolvedBy }
             };
         });
         return gameState.dailyTrivia.correctAnswer === optionIndex;
     };
 
     const updateDirectorStat = (stat, value) => {
-        // Size validation now handled in UI components via resizeImage
-        setGameState(prev => ({
-            ...prev,
-            directorStats: {
-                ...prev.directorStats,
-                [stat]: value
+        setGameState(prev => {
+            const newState = {
+                ...prev,
+                directorStats: {
+                    ...prev.directorStats,
+                    [stat]: value
+                }
+            };
+            if (stat === 'avatar') {
+                newState.students = prev.students.map(s => s.role === 'director' ? { ...s, avatar: value } : s);
+                if (newState.currentUser?.role === 'director') {
+                    newState.currentUser = { ...newState.currentUser, avatar: value };
+                }
             }
-        }));
+            return newState;
+        });
     };
 
     const updateNoticeBoard = (message, active) => {
@@ -558,6 +689,8 @@ export const GameProvider = ({ children }) => {
 
     return (
         <GameContext.Provider value={{
+            isViewingAsUser,
+            toggleViewAsUser: () => setIsViewingAsUser(prev => !prev),
             gameState,
             login,
             register,
@@ -697,59 +830,40 @@ export const GameProvider = ({ children }) => {
                     if (!challenge || !challenge.active) return prev;
 
                     const isCorrect = answer.trim().toLowerCase() === challenge.correctAnswer.trim().toLowerCase();
+                    const attempt = { challengeId: challenge.id, isCorrect, timestamp: Date.now() };
 
-                    // Record attempt
-                    const attempt = {
-                        challengeId: challenge.id,
-                        isCorrect: isCorrect,
-                        timestamp: Date.now()
-                    };
-
-                    // Update user stats
                     const updatedStudents = prev.students.map(u => {
                         if (u.id === userId) {
+                            // +20 energy on correct challenge
+                            const newEnergy = isCorrect
+                                ? Math.min(u.strength?.max ?? 100, (u.strength?.current ?? 100) + 20)
+                                : (u.strength?.current ?? 100);
                             return {
                                 ...u,
-                                challengeHistory: {
-                                    ...(u.challengeHistory || {}),
-                                    [challenge.id]: attempt
-                                },
+                                challengeHistory: { ...(u.challengeHistory || {}), [challenge.id]: attempt },
                                 xp: isCorrect ? u.xp + 20 : u.xp,
                                 streakDirector: isCorrect ? (u.streakDirector || 0) + 1 : 0,
                                 challengesSolved: isCorrect ? (u.challengesSolved || 0) + 1 : (u.challengesSolved || 0),
-                                puzzlesSolved: isCorrect ? (u.puzzlesSolved || 0) + 1 : (u.puzzlesSolved || 0)
+                                puzzlesSolved: isCorrect ? (u.puzzlesSolved || 0) + 1 : (u.puzzlesSolved || 0),
+                                strength: { ...u.strength, current: newEnergy },
+                                lastEnergyRegen: isCorrect ? Date.now() : (u.lastEnergyRegen || Date.now())
                             };
                         }
                         return u;
                     });
 
-                    // Update House Points if correct
                     const user = prev.students.find(u => u.id === userId);
                     let updatedHouses = { ...prev.houses };
-
-                    if (isCorrect && user) {
-                        const houseKey = user.house;
-                        if (updatedHouses[houseKey]) {
-                            updatedHouses[houseKey] = {
-                                ...updatedHouses[houseKey],
-                                points: updatedHouses[houseKey].points + 20
-                            };
-                        }
+                    if (isCorrect && user && updatedHouses[user.house]) {
+                        updatedHouses[user.house] = { ...updatedHouses[user.house], points: updatedHouses[user.house].points + 20 };
                     }
 
-                    return {
-                        ...prev,
-                        students: updatedStudents, // Fixed: users -> students
-                        houses: updatedHouses
-                    };
+                    const updatedCurrentUser = prev.currentUser?.id === userId
+                        ? updatedStudents.find(s => s.id === userId)
+                        : prev.currentUser;
+
+                    return { ...prev, students: updatedStudents, houses: updatedHouses, currentUser: updatedCurrentUser };
                 });
-                // Note: The return for UI feedback in strict React context usage is tricky here since state update is async.
-                // The component logic we wrote in DailyChallenge checks solveDailyChallenge return value.
-                // We need to make sure the helper function returns the boolean.
-                // But setState is void. 
-                // Wait, the component implementation expects a return value from `solveDailyChallenge`.
-                // The current implementaton returns nothing from the setState callback wrapper.
-                // We must return the boolean OUTSIDE the setGameState.
                 return answer.trim().toLowerCase() === gameState.dailyChallenge.correctAnswer.trim().toLowerCase();
             },
 
@@ -839,8 +953,32 @@ export const GameProvider = ({ children }) => {
                         houses: updatedHouses,
                         currentUser: updatedCurrentUser
                     };
-                })
-                    ;
+                });
+            },
+
+            sendFlyingMessage: (message) => {
+                setGameState(prev => ({
+                    ...prev,
+                    flyingMessages: [...(prev.flyingMessages || []), { ...message, id: Date.now(), timestamp: Date.now() }]
+                }));
+            },
+            deleteFlyingMessage: (id) => {
+                setGameState(prev => ({
+                    ...prev,
+                    flyingMessages: (prev.flyingMessages || []).filter(m => m.id !== id)
+                }));
+            },
+            postCelebrationMessage: (message) => {
+                setGameState(prev => ({
+                    ...prev,
+                    celebrationMessages: [...(prev.celebrationMessages || []), { ...message, id: Date.now(), timestamp: Date.now() }]
+                }));
+            },
+            deleteCelebrationMessage: (id) => {
+                setGameState(prev => ({
+                    ...prev,
+                    celebrationMessages: (prev.celebrationMessages || []).filter(m => m.id !== id)
+                }));
             },
 
             // --- Plant of the Month Logic ---
@@ -1246,13 +1384,18 @@ export const GameProvider = ({ children }) => {
                         currentStreak = calculateMilestone(currentStreak) + 1;
                     }
 
+                    // +30 energy on attendance
+                    const newAttendanceEnergy = Math.min(user.strength?.max ?? 100, (user.strength?.current ?? 100) + 30);
+
                     const updatedStudents = [...prev.students];
                     updatedStudents[userIndex] = {
                         ...user,
                         streakAttendance: currentStreak,
                         totalAttendance: (user.totalAttendance || 0) + 1,
                         lastAttendanceDate: today,
-                        xp: user.xp + 50 // Bonus for attendance
+                        xp: user.xp + 50,
+                        strength: { ...user.strength, current: newAttendanceEnergy },
+                        lastEnergyRegen: Date.now()
                     };
 
                     // House Points
@@ -1313,8 +1456,12 @@ export const GameProvider = ({ children }) => {
                 });
             },
 
-            // --- Generic Activity Logic ---
+            // --- Generic Activity Logic (Aula de Magia) ---
+            // Energy cost per activity ID
             completeActivity: (userId, activityId, points) => {
+                const ENERGY_COST = { objectHunt: 15, vision: 20, text: 15, potion: 25, spellTyper: 20 };
+                const energyCost = ENERGY_COST[activityId] || 15;
+
                 setGameState(prev => {
                     const userIndex = prev.students.findIndex(s => s.id === userId);
                     if (userIndex === -1) return prev;
@@ -1325,42 +1472,40 @@ export const GameProvider = ({ children }) => {
                     const now = Date.now();
                     const COOLDOWN_MS = 60 * 60 * 1000; // 1 Hour
 
-                    if (now - lastCompleted < COOLDOWN_MS) {
-                        return prev; // Cooldown active, no points
-                    }
+                    if (now - lastCompleted < COOLDOWN_MS) return prev;
 
-                    // Award Points
+                    // Check energy - apply time-based regen first
+                    const regenedUser = regenEnergyForStudent(user);
+                    const currentEnergy = regenedUser.strength?.current ?? 100;
+                    const hasEnergy = currentEnergy >= energyCost;
+                    // Drain energy regardless (even if 0, activity still plays)
+                    const newEnergy = Math.max(0, currentEnergy - energyCost);
+
+                    // "Prisión Mágica": if no energy, can play but no points
+                    const actualPoints = hasEnergy ? points : 0;
+
                     const updatedStudents = [...prev.students];
                     updatedStudents[userIndex] = {
-                        ...user,
-                        xp: user.xp + points,
-                        activityCooldowns: {
-                            ...cooldowns,
-                            [activityId]: now
-                        }
+                        ...regenedUser,
+                        xp: user.xp + actualPoints,
+                        strength: { ...regenedUser.strength, current: newEnergy },
+                        lastEnergyRegen: now,
+                        activityCooldowns: { ...cooldowns, [activityId]: now }
                     };
 
-                    // House Points
+                    // House Points (only if energy was available)
                     let updatedHouses = { ...prev.houses };
-                    const houseKey = user.house;
-                    if (updatedHouses[houseKey]) {
-                        updatedHouses[houseKey] = {
-                            ...updatedHouses[houseKey],
-                            points: updatedHouses[houseKey].points + points
+                    if (actualPoints > 0 && updatedHouses[user.house]) {
+                        updatedHouses[user.house] = {
+                            ...updatedHouses[user.house],
+                            points: updatedHouses[user.house].points + actualPoints
                         };
                     }
 
-                    // Sync currentUser
-                    const updatedCurrentUser = prev.currentUser && prev.currentUser.id === userId ? updatedStudents[userIndex] : prev.currentUser;
-
-                    return {
-                        ...prev,
-                        students: updatedStudents,
-                        houses: updatedHouses,
-                        currentUser: updatedCurrentUser
-                    };
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedStudents[userIndex] : prev.currentUser;
+                    return { ...prev, students: updatedStudents, houses: updatedHouses, currentUser: updatedCurrentUser };
                 });
-                return true; // Indicate success (roughly, since state is async)
+                return true;
             },
 
             startNewCycle: () => {
@@ -1381,15 +1526,120 @@ export const GameProvider = ({ children }) => {
                 }));
             },
 
+            advanceSchoolYear,
+
             resetDirectorScore: () => {
                 setGameState(prev => ({
                     ...prev,
                     directorStats: {
                         ...prev.directorStats,
-                        directorScore: 50 // Reset to neutral
+                        directorScore: 50
                     }
                 }));
-            }
+            },
+
+            // --- Energy Management ---
+            regenEnergy: (userId) => {
+                setGameState(prev => {
+                    const idx = prev.students.findIndex(s => s.id === userId);
+                    if (idx === -1) return prev;
+                    const updated = [...prev.students];
+                    updated[idx] = regenEnergyForStudent(updated[idx]);
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updated[idx] : prev.currentUser;
+                    return { ...prev, students: updated, currentUser: updatedCurrentUser };
+                });
+            },
+
+            // Director restores a student's full energy
+            restoreEnergy: (userId, amount = 100) => {
+                setGameState(prev => {
+                    const idx = prev.students.findIndex(s => s.id === userId);
+                    if (idx === -1) return prev;
+                    const updated = [...prev.students];
+                    const s = updated[idx];
+                    const newEnergy = amount === 100 ? (s.strength?.max ?? 100) : Math.min(s.strength?.max ?? 100, (s.strength?.current ?? 0) + amount);
+                    updated[idx] = { ...s, strength: { ...s.strength, current: newEnergy }, lastEnergyRegen: Date.now() };
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updated[idx] : prev.currentUser;
+                    return { ...prev, students: updated, currentUser: updatedCurrentUser };
+                });
+            },
+
+            // --- House Chat Status ---
+            toggleHouseChatStatus: (house) => {
+                setGameState(prev => ({
+                    ...prev,
+                    houseChatsStatus: {
+                        ...prev.houseChatsStatus,
+                        [house]: !prev.houseChatsStatus?.[house]
+                    }
+                }));
+            },
+
+            deleteMessage: (house, messageId) => {
+                setGameState(prev => ({
+                    ...prev,
+                    houseChats: {
+                        ...prev.houseChats,
+                        [house]: (prev.houseChats[house] || []).filter(m => m.id !== messageId)
+                    }
+                }));
+            },
+
+            // --- Magic Classroom Toggle ---
+            toggleMagicClassroom: () => {
+                setGameState(prev => ({ ...prev, magicClassroomActive: !prev.magicClassroomActive }));
+            },
+
+            // --- Activity Toggles ---
+            toggleActivity: (activityKey) => {
+                setGameState(prev => ({
+                    ...prev,
+                    activityToggles: {
+                        ...(prev.activityToggles || INITIAL_STATE.activityToggles),
+                        [activityKey]: !prev.activityToggles?.[activityKey]
+                    }
+                }));
+            },
+
+            // --- Quick XP Adjustment (Director) ---
+            adjustStudentXP: (userId, amount) => {
+                setGameState(prev => {
+                    const idx = prev.students.findIndex(s => s.id === userId);
+                    if (idx === -1) return prev;
+                    const updated = [...prev.students];
+                    const s = updated[idx];
+                    updated[idx] = { ...s, xp: Math.max(0, (s.xp || 0) + amount) };
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updated[idx] : prev.currentUser;
+                    return { ...prev, students: updated, currentUser: updatedCurrentUser };
+                });
+            },
+
+            // --- Monthly Bonus (50 XP, once per month per user) ---
+            claimMonthlyBonus: (userId) => {
+                setGameState(prev => {
+                    const idx = prev.students.findIndex(s => s.id === userId);
+                    if (idx === -1) return prev;
+                    const s = prev.students[idx];
+                    const now = new Date();
+                    const currentMonth = `${now.getFullYear()}-${now.getMonth() + 1}`;
+                    if (s.lastMonthlyBonus === currentMonth) return prev; // Already claimed this month
+                    const updated = [...prev.students];
+                    updated[idx] = { ...s, xp: (s.xp || 0) + 50, lastMonthlyBonus: currentMonth };
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updated[idx] : prev.currentUser;
+                    return { ...prev, students: updated, currentUser: updatedCurrentUser };
+                });
+            },
+
+            // --- Edit Student (director) ---
+            editStudent: (studentId, updates) => {
+                setGameState(prev => {
+                    const updatedStudents = prev.students.map(s => s.id === studentId ? { ...s, ...updates } : s);
+                    const updatedCurrentUser = prev.currentUser?.id === studentId
+                        ? { ...prev.currentUser, ...updates }
+                        : prev.currentUser;
+                    return { ...prev, students: updatedStudents, currentUser: updatedCurrentUser };
+                });
+            },
         }}>
             {children}
         </GameContext.Provider>
