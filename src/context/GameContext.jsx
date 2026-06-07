@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { supabase } from '../supabaseClient';
 
 const GameContext = createContext();
 
@@ -34,16 +35,13 @@ const INITIAL_STATE = {
         votes: {},
         directorScore: 85
     },
-    houseCupHistory: {
-        lastWinner: 'phoenix',
-        year: 2025,
-        standings: [ // Ordered list of last year's results
-            { house: 'phoenix', points: 4500 },
-            { house: 'unicornius', points: 4320 },
-            { house: 'vipera', points: 4150 },
-            { house: 'hipocampus', points: 3900 }
-        ]
-    },
+    houseCupHistory: [
+        {
+            year: 2025,
+            winner: 'phoenix',
+            points: 4500
+        }
+    ],
     students: [
         { id: 1, name: "Luna Valerius", email: "luna@astrum.edu", password: "123", house: "phoenix", level: 5, xp: 450, avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Luna", wand: { wood: "Sauco", core: "Fénix" }, birthday: "1990-05-15", streakAttendance: 0, totalAttendance: 0, streakVoting: 0, greekAlphabetLevel: 0, coins: 50, puzzlesSolved: 3, triviaSolved: 0, challengesSolved: 0, strength: { current: 100, max: 100 }, wisdom: { points: 0, level: 1 }, course: 1 },
         { id: 2, name: "Draco Thorne", email: "draco@astrum.edu", password: "123", house: "vipera", level: 4, xp: 380, avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Draco", wand: { wood: "Tejo", core: "Dragón" }, birthday: "1990-06-05", streakAttendance: 0, totalAttendance: 0, streakVoting: 0, greekAlphabetLevel: 0, coins: 20, puzzlesSolved: 1, triviaSolved: 0, challengesSolved: 0, strength: { current: 80, max: 100 }, wisdom: { points: 15, level: 1 }, course: 1 },
@@ -87,6 +85,7 @@ const INITIAL_STATE = {
         unicornius: true,
         hipocampus: true
     },
+    directMessages: [],
     magicClassroomActive: false,
     flyingMessages: [],
     celebrationMessages: [],
@@ -102,43 +101,53 @@ const INITIAL_STATE = {
         reading: true,
         challenge: true,
         trivia: true,
+        pergamino: true
     },
+    arcaneGlossary: [
+        { term: "Aethelgard", description: "La antigua fortaleza de cristal." },
+        { term: "Ignis", description: "Fuego ancestral o la IA del colegio." }
+    ],
 };
 
 export const GameProvider = ({ children }) => {
     const [gameState, setGameState] = useState(INITIAL_STATE);
     const [isLoading, setIsLoading] = useState(true);
     const [isViewingAsUser, setIsViewingAsUser] = useState(false);
-    const BLOB_URL = 'https://jsonblob.com/api/jsonBlob/019e28cc-991d-70ac-b328-ac5d8ae26c63';
-
     useEffect(() => {
         const fetchState = async () => {
             try {
-                const response = await fetch(BLOB_URL);
-                let cloudData = null;
-                if (response.ok) {
-                    cloudData = await response.json();
-                }
+                const { data: row, error } = await supabase
+                    .from('game_state')
+                    .select('state_data')
+                    .eq('id', 'state')
+                    .maybeSingle();
+
+                let cloudData = row ? row.state_data : null;
 
                 const savedLocal = localStorage.getItem('astrum_gamestate');
                 const localData = savedLocal ? JSON.parse(savedLocal) : null;
 
-                // Si la nube está vacía o es nueva (pocas keys) pero tenemos datos locales, priorizar los locales para restaurar
-                if ((!cloudData || Object.keys(cloudData).length < 5) && localData) {
-                    console.log("Restaurando estado desde localStorage a la nube...");
+                // Priorizar datos locales si no hay datos en la nube
+                if ((!cloudData || Object.keys(cloudData).length === 0) && localData) {
+                    console.log('Restaurando estado desde localStorage a Supabase...');
+                    await supabase.from('game_state').upsert({ id: 'state', state_data: { ...INITIAL_STATE, ...localData } });
                     setGameState({ ...INITIAL_STATE, ...localData });
-                } else if (cloudData && Object.keys(cloudData).length >= 5) {
-                    setGameState({ ...INITIAL_STATE, ...cloudData, noticeBoard: cloudData.noticeBoard || INITIAL_STATE.noticeBoard, directorStats: { ...INITIAL_STATE.directorStats, ...cloudData.directorStats } });
+                } else if (cloudData) {
+                    setGameState({
+                        ...INITIAL_STATE,
+                        ...cloudData,
+                        noticeBoard: cloudData.noticeBoard || INITIAL_STATE.noticeBoard,
+                        directorStats: { ...INITIAL_STATE.directorStats, ...cloudData.directorStats },
+                        activityToggles: { ...INITIAL_STATE.activityToggles, ...(cloudData.activityToggles || {}) },
+                        houseChatsStatus: { ...INITIAL_STATE.houseChatsStatus, ...(cloudData.houseChatsStatus || {}) }
+                    });
                 } else {
-                     // Ambos vacíos, inicializar blob con el estado por defecto
-                     await fetch(BLOB_URL, {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                        body: JSON.stringify(INITIAL_STATE)
-                     });
+                    // Ningún dato en nube ni local, inicializar con estado por defecto
+                    await supabase.from('game_state').upsert({ id: 'state', state_data: INITIAL_STATE });
+                    setGameState(INITIAL_STATE);
                 }
             } catch (e) {
-                console.error("Error loading state from cloud:", e);
+                console.error('Error loading state from Supabase:', e);
                 const saved = localStorage.getItem('astrum_gamestate');
                 if (saved) setGameState({ ...INITIAL_STATE, ...JSON.parse(saved) });
             } finally {
@@ -147,6 +156,56 @@ export const GameProvider = ({ children }) => {
         };
         fetchState();
     }, []);
+
+    useEffect(() => {
+        const fetchStudents = async () => {
+            try {
+                const { data, error } = await supabase.from('students').select('*');
+                if (error) throw error;
+                if (data) {
+                    const studentsList = data.map(row => ({ id: row.id, ...row.data }));
+                    setGameState(prev => ({ ...prev, students: studentsList }));
+                }
+            } catch (e) {
+                console.error('Error fetching students from Supabase:', e);
+            }
+        };
+
+        if (!isLoading) {
+            fetchStudents();
+        }
+
+        const channel = supabase
+            .channel('students-changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, (payload) => {
+                if (payload.eventType === 'INSERT') {
+                    const newStudent = { id: payload.new.id, ...payload.new.data };
+                    setGameState(prev => {
+                        if (prev.students.some(s => s.id === newStudent.id)) return prev;
+                        return { ...prev, students: [...prev.students, newStudent] };
+                    });
+                } else if (payload.eventType === 'UPDATE') {
+                    const updatedStudent = { id: payload.new.id, ...payload.new.data };
+                    setGameState(prev => ({
+                        ...prev,
+                        students: prev.students.map(s => s.id === updatedStudent.id ? updatedStudent : s),
+                        currentUser: prev.currentUser?.id === updatedStudent.id ? updatedStudent : prev.currentUser
+                    }));
+                } else if (payload.eventType === 'DELETE') {
+                    const deletedId = payload.old.id;
+                    setGameState(prev => ({
+                        ...prev,
+                        students: prev.students.filter(s => s.id !== deletedId),
+                        currentUser: prev.currentUser?.id === deletedId ? null : prev.currentUser
+                    }));
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [isLoading]);
 
     const isFirstRender = useRef(true);
     useEffect(() => {
@@ -159,17 +218,44 @@ export const GameProvider = ({ children }) => {
         const saveState = async () => {
             try {
                 localStorage.setItem('astrum_gamestate', JSON.stringify(gameState));
-                await fetch(BLOB_URL, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-                    body: JSON.stringify(gameState)
-                });
+                // Omitir el students gigante para no inflar la tabla de game_state
+                const { students, ...stateWithoutStudents } = gameState;
+                await supabase.from('game_state').upsert({ id: 'state', state_data: stateWithoutStudents });
             } catch (e) {
-                console.error("Error saving state:", e);
+                console.error("Error saving state to Supabase:", e);
             }
         };
         saveState();
     }, [gameState, isLoading]);
+
+    // Sync pending changes when back online
+    useEffect(() => {
+        const syncPendingChanges = async () => {
+            if (!navigator.onLine) return;
+            const pending = gameState.pendingChanges || [];
+            for (const change of pending) {
+                try {
+                    if (change.type === 'edit') {
+                        const { data: row } = await supabase.from('students').select('data').eq('id', change.id).maybeSingle();
+                        const currentData = row ? row.data : {};
+                        const mergedData = { ...currentData, ...change.updates };
+                        await supabase.from('students').upsert({ id: change.id, email: mergedData.email, data: mergedData });
+                    } else if (change.type === 'delete') {
+                        await supabase.from('students').delete().eq('id', change.id);
+                    }
+                } catch (e) {
+                    console.error('Sync error:', e);
+                }
+            }
+            if (pending.length) {
+                setGameState(prev => ({ ...prev, pendingChanges: [] }));
+            }
+        };
+        window.addEventListener('online', syncPendingChanges);
+        // Also try sync on mount in case we are already online
+        syncPendingChanges();
+        return () => window.removeEventListener('online', syncPendingChanges);
+    }, []);
 
     // Robustness Check: Ensure critical new features exist in state
     useEffect(() => {
@@ -216,6 +302,32 @@ export const GameProvider = ({ children }) => {
             // Ensure houseChatsStatus exists
             if (!prev.houseChatsStatus) {
                 updates.houseChatsStatus = INITIAL_STATE.houseChatsStatus;
+                changed = true;
+            }
+
+            // Ensure activityToggles has pergamino
+            if (prev.activityToggles && prev.activityToggles.pergamino === undefined) {
+                updates.activityToggles = { ...prev.activityToggles, pergamino: true };
+                changed = true;
+            }
+
+            // Ensure arcaneGlossary exists
+            if (!prev.arcaneGlossary) {
+                updates.arcaneGlossary = INITIAL_STATE.arcaneGlossary;
+                changed = true;
+            }
+
+            // Ensure houseCupHistory is an array
+            if (!Array.isArray(prev.houseCupHistory)) {
+                updates.houseCupHistory = [
+                    { year: prev.houseCupHistory?.year || 2025, winner: prev.houseCupHistory?.lastWinner || 'phoenix', points: prev.houseCupHistory?.standings?.[0]?.points || 4500 }
+                ];
+                changed = true;
+            }
+
+            // Ensure directMessages exists
+            if (!prev.directMessages) {
+                updates.directMessages = [];
                 changed = true;
             }
 
@@ -328,66 +440,78 @@ export const GameProvider = ({ children }) => {
         return () => clearInterval(interval);
     }, [isLoading, gameState.currentUser?.id]);
 
-    // ============================================================
-    // MANUAL SCHOOL YEAR ADVANCEMENT (replaces automatic check)
-    // ============================================================
-    const advanceSchoolYear = () => {
+    const editStudent = async (id, updates) => {
+        setGameState(prev => ({
+            ...prev,
+            students: prev.students.map(s => s.id === id ? { ...s, ...updates } : s),
+            currentUser: prev.currentUser?.id === id ? { ...prev.currentUser, ...updates } : prev.currentUser,
+            pendingChanges: [...(prev.pendingChanges || []), { type: 'edit', id, updates }]
+        }));
+        try {
+            const { data: row } = await supabase.from('students').select('data').eq('id', id).maybeSingle();
+            const currentData = row ? row.data : {};
+            const mergedData = { ...currentData, ...updates };
+            const { error } = await supabase.from('students').upsert({ id, email: mergedData.email, data: mergedData });
+            if (error) throw error;
+        } catch (e) {
+            console.error('Error editing student in Supabase:', e);
+        }
+    };
+
+    const submitPergaminoText = (userId, text, scoreData) => {
         setGameState(prev => {
-            const currentYear = new Date().getFullYear();
             const updatedStudents = prev.students.map(s => {
-                if (s.role === 'student') {
-                    const currentCourse = s.course || 1;
-                    if (currentCourse < 6) {
-                        return { ...s, course: currentCourse + 1, totalAttendance: 0, streakAttendance: 0, streakVoting: 0 };
-                    } else {
-                        return { ...s, role: 'guardian', course: 'graduado', totalAttendance: 0, streakAttendance: 0 };
-                    }
+                if (s.id === userId) {
+                    return { ...s, xp: s.xp + scoreData.total, coins: (s.coins || 0) + 10 };
                 }
                 return s;
             });
-            return {
-                ...prev,
-                students: updatedStudents,
-                lastPromotionYear: currentYear,
-                noticeBoard: {
-                    message: `¡Atención! El Ciclo Escolar ha avanzado. ¡Felicidades a todos los alumnos por pasar de año y a nuestros nuevos graduados! 🎓✨`,
-                    active: true,
-                    lastUpdated: Date.now()
-                },
-                annualCelebration: true
-            };
+            const updatedCurrentUser = prev.currentUser?.id === userId ? updatedStudents.find(s => s.id === userId) : prev.currentUser;
+            
+            // Log interaction
+            const newHistory = [...(prev.interactionHistory || []), {
+                id: Date.now(),
+                userId,
+                type: 'pergamino',
+                text,
+                score: scoreData,
+                timestamp: Date.now()
+            }];
+
+            return { ...prev, students: updatedStudents, currentUser: updatedCurrentUser, interactionHistory: newHistory };
         });
     };
 
-    // Achievement milestone calculation helper
-    const calculateMilestone = (streak) => {
-        if (streak >= 50) return 50;
-        if (streak >= 40) return 40;
-        if (streak >= 30) return 30;
-        if (streak >= 20) return 20;
-        if (streak >= 10) return 10;
-        return 0;
+    const updateArcaneGlossary = (newGlossary) => {
+        setGameState(prev => ({ ...prev, arcaneGlossary: newGlossary }));
     };
 
-    const login = (email, password) => {
-        const user = gameState.students.find(s => s.email === email && s.password === password);
-        if (user) {
-            setGameState(prev => ({ ...prev, currentUser: user }));
-            return true;
+    const deleteStudent = async (id) => {
+        setGameState(prev => ({
+            ...prev,
+            students: prev.students.filter(s => s.id !== id),
+            currentUser: prev.currentUser?.id === id ? null : prev.currentUser,
+            pendingChanges: [...(prev.pendingChanges || []), { type: 'delete', id }]
+        }));
+        try {
+            const { error } = await supabase.from('students').delete().eq('id', id);
+            if (error) throw error;
+        } catch (e) {
+            console.error('Error hard-deleting student in Supabase:', e);
         }
-        return false;
     };
 
-    const register = (email, password, name, role = 'student', studyYear = 1) => {
+    const register = async (email, password, name, role = 'student', studyYear = 1) => {
         const exists = gameState.students.find(s => s.email === email);
         if (exists) return false;
 
+        const newId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
         const newUser = {
-            id: Date.now(),
+            id: newId,
             name: name || "Nuevo Mago",
             email,
             password,
-            house: "unassigned", // New users start unassigned
+            house: "unassigned",
             level: 1,
             xp: 0,
             avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
@@ -399,12 +523,20 @@ export const GameProvider = ({ children }) => {
             streakAttendance: 0,
             streakVoting: 0,
             greekAlphabetLevel: 0,
-            role: role, // 'student' | 'guardian' | 'director'
+            role: role,
             course: role === 'student' ? parseInt(studyYear) : null,
             strength: { current: 100, max: 100 },
             wisdom: { points: 0, level: 1 },
-            activityCooldowns: {} // { activityId: timestamp }
+            activityCooldowns: {}
         };
+
+        try {
+            const { error } = await supabase.from('students').insert([{ id: newId, email, data: newUser }]);
+            if (error) throw error;
+        } catch (e) {
+            console.error("Error registering student in Supabase:", e);
+            return false;
+        }
 
         setGameState(prev => ({
             ...prev,
@@ -414,16 +546,46 @@ export const GameProvider = ({ children }) => {
         return true;
     };
 
+    const login = (email, password) => {
+        const user = gameState.students.find(s => s.email === email && s.password === password);
+        if (user) {
+            setGameState(prev => ({ ...prev, currentUser: user }));
+            return true;
+        }
+        return false;
+    };
+
     const logout = () => {
         setGameState(prev => ({ ...prev, currentUser: null }));
     };
 
-    const updateUser = (id, updates) => {
-        setGameState(prev => ({
-            ...prev,
-            currentUser: { ...prev.currentUser, ...updates },
-            students: prev.students.map(s => s.id === id ? { ...s, ...updates } : s)
-        }));
+    const requestPasswordReset = (email) => {
+        const userExists = gameState.students.some(s => s.email === email);
+        if (!userExists) return null;
+        // In a real app, this would send an email and save the code in the DB.
+        // For mock, we just generate a random 6-digit code.
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        
+        // Save the code to local storage to verify it later in the mock flow
+        localStorage.setItem(`pwd_reset_${email}`, code);
+        return code;
+    };
+
+    const resetPassword = (email, code, newPassword) => {
+        const savedCode = localStorage.getItem(`pwd_reset_${email}`);
+        if (!savedCode || savedCode !== code) return false;
+
+        const userIndex = gameState.students.findIndex(s => s.email === email);
+        if (userIndex === -1) return false;
+
+        const userId = gameState.students[userIndex].id;
+        
+        // Cleanup mock code
+        localStorage.removeItem(`pwd_reset_${email}`);
+        
+        // Use existing editStudent to update password
+        editStudent(userId, { password: newPassword });
+        return true;
     };
 
     const addPoints = (house, amount) => {
@@ -437,48 +599,6 @@ export const GameProvider = ({ children }) => {
                 }
             }
         }));
-    };
-
-    // Daily Trivia Logic - everyone including director earns points
-    const submitTriviaAnswer = (userId, optionIndex) => {
-        setGameState(prev => {
-            const trivia = prev.dailyTrivia;
-            if (trivia.solvedBy.includes(userId)) return prev;
-
-            const isCorrect = optionIndex === trivia.correctAnswer;
-            const newSolvedBy = [...trivia.solvedBy, userId];
-
-            let updatedStudents = prev.students;
-            if (isCorrect) {
-                updatedStudents = prev.students.map(s => {
-                    if (s.id === userId) {
-                        // +10 energy on correct trivia
-                        const newEnergy = Math.min(s.strength?.max ?? 100, (s.strength?.current ?? 100) + 10);
-                        return {
-                            ...s,
-                            xp: s.xp + 10,
-                            coins: (s.coins || 0) + 5,
-                            triviaSolved: (s.triviaSolved || 0) + 1,
-                            strength: { ...s.strength, current: newEnergy },
-                            lastEnergyRegen: Date.now()
-                        };
-                    }
-                    return s;
-                });
-            }
-
-            const updatedCurrentUser = prev.currentUser?.id === userId
-                ? updatedStudents.find(s => s.id === userId)
-                : prev.currentUser;
-
-            return {
-                ...prev,
-                students: updatedStudents,
-                currentUser: updatedCurrentUser,
-                dailyTrivia: { ...trivia, solvedBy: newSolvedBy }
-            };
-        });
-        return gameState.dailyTrivia.correctAnswer === optionIndex;
     };
 
     const updateDirectorStat = (stat, value) => {
@@ -515,11 +635,7 @@ export const GameProvider = ({ children }) => {
         setGameState(prev => {
             const user = prev.currentUser;
             if (!user) return prev;
-
-            // Access control
-            if (user.role !== 'director' && user.house !== house) {
-                return prev;
-            }
+            if (user.role !== 'director' && user.house !== house) return prev;
 
             const newMessage = {
                 id: Date.now(),
@@ -540,6 +656,38 @@ export const GameProvider = ({ children }) => {
         });
     };
 
+    const sendDirectMessage = (recipientId, text) => {
+        setGameState(prev => {
+            const user = prev.currentUser;
+            if (!user) return prev;
+
+            const newMessage = {
+                id: Date.now(),
+                senderId: user.id,
+                senderName: user.name,
+                senderAvatar: user.avatar,
+                recipientId,
+                text,
+                timestamp: Date.now(),
+                read: false
+            };
+
+            return {
+                ...prev,
+                directMessages: [...(prev.directMessages || []), newMessage]
+            };
+        });
+    };
+
+    const markDirectMessageRead = (messageId) => {
+        setGameState(prev => ({
+            ...prev,
+            directMessages: (prev.directMessages || []).map(msg => 
+                msg.id === messageId ? { ...msg, read: true } : msg
+            )
+        }));
+    };
+
     const resetPetStreaks = () => {
         setGameState(prev => ({
             ...prev,
@@ -552,41 +700,16 @@ export const GameProvider = ({ children }) => {
         }));
     };
 
-    const resetPlantStreaks = () => {
-        setGameState(prev => ({
-            ...prev,
-            students: prev.students.map(student => ({
-                ...student,
-                streakPlant: 0,
-                lastFullPlantDate: "",
-                plantHistory: {}
-            }))
-        }));
-    };
-
-    // User Voting Mechanism
     const voteDirectorStats = (userId, votes) => {
         setGameState(prev => {
             const today = new Date().toISOString().split('T')[0];
-
-            // Check if user already voted TODAY
             const userIndex = prev.students.findIndex(s => s.id === userId);
             if (userIndex === -1) return prev;
 
             const existingVote = prev.directorStats.votes[userId];
             const hasVotedToday = existingVote && existingVote.lastVoteDate === today;
 
-            if (hasVotedToday && !prev.directorStats.allowRevote) {
-                // Optional: fail silently or let UI handle it. 
-                // If we want to allow updating the vote but NOT getting points again? 
-                // The prompt says "allows making a new vote". Usually means daily. 
-                // Let's assume we proceed to update values, but skipping points if already voted today.
-            }
-
-            // Prepare new vote object with timestamp
             const newVoteObject = { ...votes, lastVoteDate: today };
-
-            // Calculate new averages
             const newVotes = { ...prev.directorStats.votes, [userId]: newVoteObject };
             const voteCount = Object.keys(newVotes).length;
 
@@ -607,21 +730,6 @@ export const GameProvider = ({ children }) => {
                 outfitRating: calculateAvg('outfitRating'),
             };
 
-            // Calculate "Director Score" as Cumulative Sum of all votes today ??
-            // OR just accumulate forever? The existing code `curr + sum` implies accumulation.
-            // But if I vote every day, the score will skyrocket. 
-            // The prompt doesn't specify Director Score logic, only "voting". 
-            // But if I vote again, I am adding to the score again.
-            // Logic: Director Score = Sum of all votes ever cast? Or logic needs to change?
-            // Existing: newDirectorScore = (prev... || 0) + currentVoteSum
-            // If I vote every day, I contribute every day. That seems correct for a "Score".
-
-            // Only add to score if it's a NEW daily vote? 
-            // Or if I update my vote, should I handle the diff? 
-            // Simplest path: If I haven't voted today, add full sum. 
-            // If I HAVE voted today (updating), we should technically adjust, but user asked for "new vote next day".
-            // So we can assume "one vote per day" is the goal.
-
             let pointsToAdd = 0;
             let directorScoreToAdd = 0;
 
@@ -632,7 +740,6 @@ export const GameProvider = ({ children }) => {
 
             const newDirectorScore = (prev.directorStats.directorScore || 0) + directorScoreToAdd;
 
-            // Update User Points
             let updatedStudents = [...prev.students];
             let updatedHouses = { ...prev.houses };
 
@@ -641,7 +748,7 @@ export const GameProvider = ({ children }) => {
                     ...updatedStudents[userIndex],
                     xp: updatedStudents[userIndex].xp + pointsToAdd,
                     streakDirector: (updatedStudents[userIndex].streakDirector || 0) + 1,
-                    streakVoting: (updatedStudents[userIndex].streakVoting || 0) + 1 // Simply incrementing for now, as voting streak reset logic was not strictly defined but can be added if needed.
+                    streakVoting: (updatedStudents[userIndex].streakVoting || 0) + 1
                 };
 
                 const houseKey = updatedStudents[userIndex].house;
@@ -665,18 +772,6 @@ export const GameProvider = ({ children }) => {
         });
     };
 
-    const completeDailyChallenge = () => {
-        setGameState(prev => ({
-            ...prev,
-            dailyChallenge: { ...prev.dailyChallenge, completed: true },
-            // Award points to current user's house
-            houses: {
-                ...prev.houses,
-                [prev.currentUser.house]: { ...prev.houses[prev.currentUser.house], points: prev.houses[prev.currentUser.house].points + 10 }
-            }
-        }));
-    };
-
     if (isLoading) {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column', backgroundColor: '#0a0a0a', color: '#fff', fontFamily: 'Inter' }}>
@@ -695,27 +790,46 @@ export const GameProvider = ({ children }) => {
             login,
             register,
             logout,
-            updateUser,
+            requestPasswordReset,
+            resetPassword,
             addPoints,
             updateDirectorStat,
             updateNoticeBoard,
             sendMessage,
+            sendDirectMessage,
+            markDirectMessageRead,
+            submitPergaminoText,
+            updateArcaneGlossary,
             resetPetStreaks,
-            resetPlantStreaks,
-            submitTriviaAnswer,
-            setDailyTrivia: (triviaData) => setGameState(prev => ({ ...prev, dailyTrivia: { ...triviaData, solvedBy: [], date: new Date().toISOString().split('T')[0] } })),
-            setHouse: (userId, house) => {
+            deleteStudent,
+            editStudent,
+            voteDirectorStats,
+            addHouseCupRecord: (record) => {
+                setGameState(prev => ({
+                    ...prev,
+                    houseCupHistory: [record, ...(prev.houseCupHistory || [])]
+                }));
+            },
+            submitTriviaAnswer: (userId, optionIndex) => {
                 setGameState(prev => {
-                    const updatedStudents = prev.students.map(s => s.id === userId ? { ...s, house } : s);
-                    return {
-                        ...prev,
-                        students: updatedStudents,
-                        currentUser: prev.currentUser?.id === userId ? { ...prev.currentUser, house } : prev.currentUser
-                    };
+                    const trivia = prev.dailyTrivia;
+                    if (trivia.solvedBy.includes(userId)) return prev;
+                    const isCorrect = optionIndex === trivia.correctAnswer;
+                    const newSolvedBy = [...trivia.solvedBy, userId];
+                    let updatedStudents = prev.students;
+                    if (isCorrect) {
+                        updatedStudents = prev.students.map(s => {
+                            if (s.id === userId) {
+                                const newEnergy = Math.min(s.strength?.max ?? 100, (s.strength?.current ?? 100) + 10);
+                                return { ...s, xp: s.xp + 10, coins: (s.coins || 0) + 5, triviaSolved: (s.triviaSolved || 0) + 1, strength: { ...s.strength, current: newEnergy }, lastEnergyRegen: Date.now() };
+                            }
+                            return s;
+                        });
+                    }
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedStudents.find(s => s.id === userId) : prev.currentUser;
+                    return { ...prev, students: updatedStudents, currentUser: updatedCurrentUser, dailyTrivia: { ...trivia, solvedBy: newSolvedBy } };
                 });
             },
-            clearAnnualCelebration: () => setGameState(prev => ({ ...prev, annualCelebration: false })),
-            // --- Global Events (Raid System) ---
             triggerEvent: (type) => {
                 setGameState(prev => {
                     const maxHp = type === 'dragon' ? 1000 : 500;
@@ -867,7 +981,6 @@ export const GameProvider = ({ children }) => {
                 return answer.trim().toLowerCase() === gameState.dailyChallenge.correctAnswer.trim().toLowerCase();
             },
 
-            voteDirectorStats, // Existing function
 
             // --- Pet of the Month Logic ---
             interactWithPet: (userId, action) => { // action: 'feed' | 'pet'
@@ -1439,13 +1552,15 @@ export const GameProvider = ({ children }) => {
                     // Sort descending
                     standings.sort((a, b) => b.points - a.points);
 
+                    const newRecord = {
+                        year: new Date().getFullYear(),
+                        winner: winner,
+                        points: maxPoints
+                    };
+
                     return {
                         ...prev,
-                        houseCupHistory: {
-                            lastWinner: winner,
-                            year: new Date().getFullYear(),
-                            standings: standings
-                        },
+                        houseCupHistory: [newRecord, ...(Array.isArray(prev.houseCupHistory) ? prev.houseCupHistory : [])],
                         houses: {
                             phoenix: { ...prev.houses.phoenix, points: 0 },
                             hipocampus: { ...prev.houses.hipocampus, points: 0 },
@@ -1630,15 +1745,12 @@ export const GameProvider = ({ children }) => {
                 });
             },
 
-            // --- Edit Student (director) ---
-            editStudent: (studentId, updates) => {
-                setGameState(prev => {
-                    const updatedStudents = prev.students.map(s => s.id === studentId ? { ...s, ...updates } : s);
-                    const updatedCurrentUser = prev.currentUser?.id === studentId
-                        ? { ...prev.currentUser, ...updates }
-                        : prev.currentUser;
-                    return { ...prev, students: updatedStudents, currentUser: updatedCurrentUser };
-                });
+            updateUser: editStudent,
+            deleteHouseCupRecord: (index) => {
+                setGameState(prev => ({
+                    ...prev,
+                    houseCupHistory: (prev.houseCupHistory || []).filter((_, i) => i !== index)
+                }));
             },
         }}>
             {children}

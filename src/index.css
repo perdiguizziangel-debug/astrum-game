@@ -3,25 +3,20 @@
 }
 
 :root {
-  /* House Colors */
-  --color-phoenix: #e74c3c;
-  --color-phoenix-dim: #c0392b;
-  --color-hipocampus: #3498db;
-  --color-hipocampus-dim: #2980b9;
-  --color-unicornius: #f1c40f;
-  --color-unicornius-dim: #f39c12;
-  --color-vipera: #2ecc71;
-  --color-vipera-dim: #27ae60;
-
+  /* Neon Violet/Gold Palette */
+  --color-primary: #9d4edd;
+  --color-primary-dim: #7b2cbf;
+  --color-secondary: #ffce31;
+  --color-secondary-dim: #d4ac0d;
+  
   /* Theme Colors */
-  --color-bg: #121212;
-  --color-surface: #1e1e1e;
-  --color-parchment: #d4c5a9;
-  --color-gold: #c5a059;
-  --color-gold-dim: #8a6d3b;
+  --color-bg: #0a0a0c;
+  --color-surface: #16161a;
+  --color-gold: #ffce31;
+  --color-gold-dim: #b8860b;
   --color-text-main: #e0e0e0;
   --color-text-muted: #a0a0a0;
-  --color-danger: #cf6679;
+  --color-danger: #ff4d4d;
 
   /* Fonts */
   --font-serif: "Cinzel", "Times New Roman", serif;
@@ -42,7 +37,7 @@ body {
   font-family: var(--font-sans);
   background-color: var(--color-bg);
   color: var(--color-text-main);
-  background-image: radial-gradient(circle at 50% 50%, #1a1a1a 0%, #121212 100%);
+  background-image: radial-gradient(circle at 50% 50%, #1c1c28 0%, #0a0a0c 100%);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
 }
@@ -52,7 +47,7 @@ h1, h2, h3, h4, h5, h6 {
   color: var(--color-gold);
   margin: 0 0 var(--spacing-md) 0;
   letter-spacing: 0.05em;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  text-shadow: 0 0 10px rgba(255, 206, 49, 0.5);
 }
 
 button {
@@ -68,26 +63,23 @@ button {
   background: var(--color-bg); 
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-surface); 
+  background: var(--color-primary); 
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-gold-dim); 
+  background: var(--color-primary-dim); 
 }
 
 /* Utilities */
 .text-gold { color: var(--color-gold); }
-.text-phoenix { color: var(--color-phoenix); }
-.text-hipocampus { color: var(--color-hipocampus); }
-.text-unicornius { color: var(--color-unicornius); }
-.text-vipera { color: var(--color-vipera); }
+.text-primary { color: var(--color-primary); }
 
 .card {
   background: var(--color-surface);
-  border: 1px solid var(--color-gold-dim);
+  border: 1px solid var(--color-primary);
   border-radius: var(--radius-md);
   padding: var(--spacing-md);
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 15px rgba(157, 78, 221, 0.2);
 }
 
 .magic-border {
@@ -98,15 +90,15 @@ button {
   position: absolute;
   top: 0; left: 0; right: 0; bottom: 0;
   border-radius: inherit;
-  box-shadow: 0 0 10px rgba(197, 160, 89, 0.2);
+  box-shadow: 0 0 15px rgba(255, 206, 49, 0.3);
   pointer-events: none;
 }
 
 /* Custom Range Slider */
 input[type=range] {
-  -webkit-appearance: none; /* Hides the slider so that custom slider can be made */
-  width: 100%; /* Specific width is required for Firefox. */
-  background: transparent; /* Otherwise white in Chrome */
+  -webkit-appearance: none;
+  width: 100%;
+  background: transparent;
 }
 
 input[type=range]::-webkit-slider-thumb {
@@ -117,15 +109,15 @@ input[type=range]::-webkit-slider-thumb {
   border-radius: 50%;
   background: var(--color-gold);
   cursor: pointer;
-  margin-top: -6px; /* You need to specify a margin in Chrome, but in Firefox and IE it is automatic */
-  box-shadow: 0 0 5px rgba(197, 160, 89, 0.5);
+  margin-top: -6px;
+  box-shadow: 0 0 10px var(--color-gold);
 }
 
 input[type=range]::-webkit-slider-runnable-track {
   width: 100%;
   height: 4px;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--color-primary-dim);
   border-radius: 2px;
 }
 
@@ -160,8 +152,8 @@ input[type=range]:focus {
 .input-field {
   width: 100%;
   padding: 0.8rem;
-  background: rgba(0,0,0,0.3);
-  border: 1px solid #444;
+  background: rgba(22, 22, 26, 0.8);
+  border: 1px solid var(--color-primary);
   border-radius: 8px;
   color: white;
   font-family: inherit;
@@ -169,18 +161,18 @@ input[type=range]:focus {
 }
 
 .button-primary {
-  background: var(--color-gold);
-  color: black;
+  background: var(--color-primary);
+  color: white;
   border: none;
   padding: 0.8rem 1.5rem;
   border-radius: 8px;
   font-weight: bold;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 0 10px rgba(157, 78, 221, 0.5);
 }
 
 .button-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(197, 160, 89, 0.4);
+  box-shadow: 0 0 20px rgba(157, 78, 221, 0.8);
 }
-

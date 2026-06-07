@@ -7,6 +7,7 @@ import Profile from './pages/Profile';
 import MagicClassroom from './pages/MagicClassroom';
 import HouseChat from './pages/HouseChat';
 import Admin from './pages/Admin';
+import Messages from './pages/Messages';
 import Login from './pages/Login';
 
 import Landing from './pages/Landing';
@@ -23,6 +24,7 @@ function App() {
             <Route path="aula" element={<MagicClassroom />} />
             <Route path="perfil" element={<Profile />} />
             <Route path="sala-comun" element={<HouseChat />} />
+            <Route path="mensajes" element={<Messages />} />
             <Route path="admin" element={<Admin />} />
           </Route>
         </Routes>

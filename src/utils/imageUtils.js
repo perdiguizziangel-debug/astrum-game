@@ -28,8 +28,8 @@ export const resizeImage = (file, maxWidth = 300, maxHeight = 300) => {
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
 
-                // Compress to JPEG with 0.8 quality
-                const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                // Compress to WEBP with 0.6 quality
+                const dataUrl = canvas.toDataURL('image/webp', 0.6);
                 resolve(dataUrl);
             };
             img.onerror = (error) => reject(error);

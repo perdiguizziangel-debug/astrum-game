@@ -16,6 +16,11 @@ const DailyTrivia = () => {
 
     if (!dailyTrivia || !currentUser) return null;
 
+    // Check expiration (fallback to creation date + 24h if expiresAt is missing but createdAt is present)
+    const isExpired = dailyTrivia.expiresAt 
+        ? Date.now() > dailyTrivia.expiresAt 
+        : (dailyTrivia.createdAt ? Date.now() > dailyTrivia.createdAt + 24 * 60 * 60 * 1000 : false);
+
     const alreadySolved = dailyTrivia.solvedBy?.includes(currentUser.id);
     const isCorrect = selectedOption === dailyTrivia.correctAnswer;
     const totalSolved = currentUser.triviaSolved || 0;
@@ -221,54 +226,67 @@ const DailyTrivia = () => {
             </div>
 
             {/* Question Section */}
-            <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-                <h2 style={{ fontSize: '1.8rem', color: '#fff', margin: 0, textTransform: 'uppercase' }}>
-                    {dailyTrivia.question}
-                </h2>
-            </div>
+            {!isExpired ? (
+                <>
+                    <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
+                        <h2 style={{ fontSize: '1.8rem', color: '#fff', margin: 0, textTransform: 'uppercase' }}>
+                            {dailyTrivia.question}
+                        </h2>
+                    </div>
 
-            {/* Options Grid */}
-            <div style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
-                gap: '1rem',
-                marginBottom: revealed ? '0' : '1rem'
-            }}>
-                {dailyTrivia.options.map((option, idx) => (
-                    <button
-                        key={idx}
-                        style={getOptionStyle(idx)}
-                        onClick={() => handleSelect(idx)}
-                    >
-                        {option}
-                    </button>
-                ))}
-            </div>
+                    {/* Options Grid */}
+                    <div style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                        gap: '1rem',
+                        marginBottom: revealed ? '0' : '1rem'
+                    }}>
+                        {dailyTrivia.options.map((option, idx) => (
+                            <button
+                                key={idx}
+                                style={getOptionStyle(idx)}
+                                onClick={() => handleSelect(idx)}
+                            >
+                                {option}
+                            </button>
+                        ))}
+                    </div>
 
-            {/* Confirm Button */}
-            {!alreadySolved && !revealed && (
-                <button
-                    onClick={handleSubmit}
-                    disabled={selectedOption === null}
-                    style={{
-                        width: '100%',
-                        marginTop: '2rem',
-                        padding: '1rem',
-                        background: selectedOption === null ? '#1e293b' : 'linear-gradient(90deg, #6d28d9, #00f2fe)',
-                        border: 'none',
-                        borderRadius: '12px',
-                        color: 'white',
-                        fontWeight: 'bold',
-                        fontSize: '1.2rem',
-                        textTransform: 'uppercase',
-                        letterSpacing: '3px',
-                        cursor: selectedOption === null ? 'default' : 'pointer',
-                        opacity: selectedOption === null ? 0.5 : 1,
-                        transition: 'all 0.3s'
-                    }}
-                >
-                    ENVIAR RESPUESTA
-                </button>
+                    {/* Confirm Button */}
+                    {!alreadySolved && !revealed && (
+                        <button
+                            onClick={handleSubmit}
+                            disabled={selectedOption === null}
+                            style={{
+                                width: '100%',
+                                marginTop: '2rem',
+                                padding: '1rem',
+                                background: selectedOption === null ? '#1e293b' : 'linear-gradient(90deg, #6d28d9, #00f2fe)',
+                                border: 'none',
+                                borderRadius: '12px',
+                                color: 'white',
+                                fontWeight: 'bold',
+                                fontSize: '1.2rem',
+                                textTransform: 'uppercase',
+                                letterSpacing: '3px',
+                                cursor: selectedOption === null ? 'default' : 'pointer',
+                                opacity: selectedOption === null ? 0.5 : 1,
+                                transition: 'all 0.3s'
+                            }}
+                        >
+                            ENVIAR RESPUESTA
+                        </button>
+                    )}
+                </>
+            ) : (
+                <div style={{ textAlign: 'center', marginBottom: '2rem', padding: '2rem', background: 'rgba(0,0,0,0.5)', borderRadius: '15px' }}>
+                    <h2 style={{ fontSize: '1.5rem', color: '#f43f5e', textTransform: 'uppercase', letterSpacing: '2px', margin: 0 }}>
+                        TIEMPO AGOTADO
+                    </h2>
+                    <p style={{ color: '#94a3b8', marginTop: '1rem' }}>
+                        Esta incógnita ha expirado. ¡Espera a que el Director revele el próximo desafío!
+                    </p>
+                </div>
             )}
 
             {/* Feedback Message */}

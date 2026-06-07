@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { useGame } from '../context/GameContext';
 import { resizeImage } from '../utils/imageUtils';
-import { QrCode, UserPlus, Star, Link as LinkIcon, Trash2, Edit, X, Save, Camera, Sparkles, Feather, Zap, ToggleLeft, ToggleRight, ArrowUpDown, ChevronUp, ChevronDown } from 'lucide-react';
+import { QrCode, UserPlus, Star, Link as LinkIcon, Trash2, Edit, X, Save, Camera, Sparkles, Feather, Zap, ToggleLeft, ToggleRight, ArrowUpDown, ChevronUp, ChevronDown, Scroll, BookOpen, Mail, PlusCircle } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import HouseCupHistory from './HouseCupHistory';
 
 const ChallengeCreatorForm = ({ onSubmit }) => {
     const { gameState } = useGame();
@@ -167,17 +168,269 @@ const ChallengeCreatorForm = ({ onSubmit }) => {
     );
 };
 
+// --- Subcomponent: Arcane Glossary Editor ---
+const ArcaneGlossaryEditor = () => {
+    const { gameState, updateArcaneGlossary } = useGame();
+    const [glossary, setGlossary] = React.useState(gameState.arcaneGlossary || []);
+    const [newTerm, setNewTerm] = React.useState('');
+    const [newDesc, setNewDesc] = React.useState('');
+    const [editingId, setEditingId] = React.useState(null);
+    const [editTerm, setEditTerm] = React.useState('');
+    const [editDesc, setEditDesc] = React.useState('');
+
+    const inputStyle = {
+        background: '#1a1a2e', border: '1px solid #555', color: 'white',
+        padding: '0.5rem 0.75rem', borderRadius: '6px', fontSize: '0.85rem', outline: 'none'
+    };
+
+    const handleAdd = () => {
+        if (!newTerm.trim() || !newDesc.trim()) return;
+        const updated = [...glossary, { id: Date.now(), term: newTerm.trim(), description: newDesc.trim() }];
+        setGlossary(updated);
+        updateArcaneGlossary(updated);
+        setNewTerm('');
+        setNewDesc('');
+    };
+
+    const handleDelete = (id) => {
+        const updated = glossary.filter(g => g.id !== id);
+        setGlossary(updated);
+        updateArcaneGlossary(updated);
+    };
+
+    const startEdit = (g) => {
+        setEditingId(g.id);
+        setEditTerm(g.term);
+        setEditDesc(g.description);
+    };
+
+    const saveEdit = () => {
+        const updated = glossary.map(g => g.id === editingId ? { ...g, term: editTerm, description: editDesc } : g);
+        setGlossary(updated);
+        updateArcaneGlossary(updated);
+        setEditingId(null);
+    };
+
+    return (
+        <div className="card" style={{ border: '1px solid #c084fc', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: '#c084fc' }}>
+                <Scroll size={20} />
+                <h3 style={{ margin: 0 }}>Glosario Arcano</h3>
+                <span style={{ marginLeft: 'auto', fontSize: '0.75rem', color: '#888' }}>{glossary.length} términos</span>
+            </div>
+
+            {/* Add new term */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
+                <input value={newTerm} onChange={e => setNewTerm(e.target.value)} placeholder="Término (ej: Aethelgard)" style={inputStyle} />
+                <input value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="Descripción del término mágico..." style={inputStyle} />
+                <button
+                    onClick={handleAdd}
+                    disabled={!newTerm.trim() || !newDesc.trim()}
+                    style={{
+                        padding: '0.5rem 0.75rem', background: '#7c3aed', border: 'none',
+                        color: 'white', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem',
+                        opacity: (!newTerm.trim() || !newDesc.trim()) ? 0.5 : 1
+                    }}
+                >
+                    <PlusCircle size={16} /> Añadir
+                </button>
+            </div>
+
+            {/* List of terms */}
+            <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {glossary.length === 0 ? (
+                    <div style={{ color: '#666', textAlign: 'center', padding: '1rem', fontStyle: 'italic' }}>
+                        El Glosario está vacío. Añade términos mágicos para que los alumnos los usen en sus relatos.
+                    </div>
+                ) : glossary.map(g => (
+                    <div key={g.id} style={{
+                        background: 'rgba(192, 132, 252, 0.08)', border: '1px solid #3d2060',
+                        borderRadius: '8px', padding: '0.75rem'
+                    }}>
+                        {editingId === g.id ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                <input value={editTerm} onChange={e => setEditTerm(e.target.value)} style={inputStyle} />
+                                <input value={editDesc} onChange={e => setEditDesc(e.target.value)} style={inputStyle} />
+                                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                                    <button onClick={saveEdit} style={{ padding: '0.3rem 0.75rem', background: '#2ecc71', border: 'none', color: 'white', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                        <Save size={14} /> Guardar
+                                    </button>
+                                    <button onClick={() => setEditingId(null)} style={{ padding: '0.3rem 0.75rem', background: '#555', border: 'none', color: 'white', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                                        <X size={14} /> Cancelar
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                                <div>
+                                    <span style={{ color: '#c084fc', fontWeight: 'bold', fontSize: '0.9rem' }}>{g.term}</span>
+                                    <span style={{ color: '#999', margin: '0 0.5rem' }}>—</span>
+                                    <span style={{ color: '#ccc', fontSize: '0.85rem' }}>{g.description}</span>
+                                </div>
+                                <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+                                    <button onClick={() => startEdit(g)} style={{ background: 'none', border: 'none', color: '#aaa', cursor: 'pointer' }}><Edit size={14} /></button>
+                                    <button onClick={() => handleDelete(g.id)} style={{ background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer' }}><Trash2 size={14} /></button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// --- Subcomponent: Director Messages Panel ---
+const DirectorMessagesPanel = () => {
+    const { gameState, sendDirectMessage, markDirectMessageRead } = useGame();
+    const { directMessages = [], students, currentUser } = gameState;
+    const [selectedStudentId, setSelectedStudentId] = React.useState(null);
+    const [messageInput, setMessageInput] = React.useState('');
+    const messagesEndRef = React.useRef(null);
+
+    const studentContacts = students.filter(s => s.role !== 'director' && s.role !== 'guardian');
+
+    const chatMessages = selectedStudentId ? directMessages.filter(msg =>
+        (msg.senderId === currentUser.id && msg.recipientId === selectedStudentId) ||
+        (msg.senderId === selectedStudentId && msg.recipientId === currentUser.id)
+    ) : [];
+
+    React.useEffect(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        chatMessages.forEach(msg => {
+            if (msg.recipientId === currentUser.id && !msg.read) {
+                markDirectMessageRead(msg.id);
+            }
+        });
+    }, [chatMessages]);
+
+    const handleSend = (e) => {
+        e.preventDefault();
+        if (!messageInput.trim() || !selectedStudentId) return;
+        sendDirectMessage(selectedStudentId, messageInput.trim());
+        setMessageInput('');
+    };
+
+    return (
+        <div className="card" style={{ border: '1px solid var(--color-gold)', marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: 'var(--color-gold)' }}>
+                <Mail size={20} />
+                <h3 style={{ margin: 0 }}>Mensajes Directos</h3>
+            </div>
+            <div style={{ display: 'flex', height: '400px', border: '1px solid #333', borderRadius: '8px', overflow: 'hidden' }}>
+                {/* Contact list */}
+                <div style={{ width: '220px', borderRight: '1px solid #333', overflowY: 'auto', background: 'rgba(0,0,0,0.3)' }}>
+                    {studentContacts.map(s => {
+                        const unread = directMessages.filter(m => m.senderId === s.id && m.recipientId === currentUser.id && !m.read).length;
+                        return (
+                            <div
+                                key={s.id}
+                                onClick={() => setSelectedStudentId(s.id)}
+                                style={{
+                                    padding: '0.75rem',
+                                    borderBottom: '1px solid #2a2a2a',
+                                    cursor: 'pointer',
+                                    background: selectedStudentId === s.id ? 'rgba(255,215,0,0.08)' : 'transparent',
+                                    display: 'flex', alignItems: 'center', gap: '0.5rem'
+                                }}
+                            >
+                                <img src={s.avatar} alt={s.name} style={{ width: '32px', height: '32px', borderRadius: '50%', objectFit: 'cover' }} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                    <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: unread > 0 ? 'white' : '#aaa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</div>
+                                    <div style={{ fontSize: '0.7rem', color: `var(--color-${s.house})`, textTransform: 'capitalize' }}>{s.house}</div>
+                                </div>
+                                {unread > 0 && (
+                                    <span style={{ background: '#e74c3c', color: 'white', borderRadius: '50%', width: '18px', height: '18px', fontSize: '0.65rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{unread}</span>
+                                )}
+                            </div>
+                        );
+                    })}
+                    {studentContacts.length === 0 && (
+                        <div style={{ padding: '1rem', color: '#666', fontSize: '0.8rem', textAlign: 'center' }}>Sin estudiantes registrados</div>
+                    )}
+                </div>
+
+                {/* Chat area */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+                    {!selectedStudentId ? (
+                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', flexDirection: 'column', gap: '0.5rem' }}>
+                            <Mail size={40} opacity={0.3} />
+                            <span style={{ fontSize: '0.85rem' }}>Selecciona un estudiante</span>
+                        </div>
+                    ) : (
+                        <>
+                            <div style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #333', background: 'rgba(0,0,0,0.2)', fontSize: '0.9rem', color: 'var(--color-gold)', fontWeight: 'bold' }}>
+                                {students.find(s => s.id === selectedStudentId)?.name}
+                            </div>
+                            <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                {chatMessages.length === 0 ? (
+                                    <div style={{ textAlign: 'center', color: '#555', fontSize: '0.85rem', marginTop: '2rem' }}>Sin mensajes aún.</div>
+                                ) : chatMessages.map(msg => {
+                                    const isMine = msg.senderId === currentUser.id;
+                                    return (
+                                        <div key={msg.id} style={{ display: 'flex', justifyContent: isMine ? 'flex-end' : 'flex-start' }}>
+                                            <div style={{
+                                                maxWidth: '75%',
+                                                background: isMine ? 'rgba(255,215,0,0.15)' : '#2a2a2a',
+                                                border: `1px solid ${isMine ? 'var(--color-gold)' : '#444'}`,
+                                                color: 'white', padding: '0.6rem 0.9rem', borderRadius: '10px', fontSize: '0.85rem'
+                                            }}>
+                                                <div>{msg.text}</div>
+                                                <div style={{ fontSize: '0.65rem', color: '#888', textAlign: 'right', marginTop: '0.2rem' }}>
+                                                    {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                <div ref={messagesEndRef} />
+                            </div>
+                            <form onSubmit={handleSend} style={{ padding: '0.75rem', borderTop: '1px solid #333', display: 'flex', gap: '0.5rem' }}>
+                                <input
+                                    value={messageInput}
+                                    onChange={e => setMessageInput(e.target.value)}
+                                    placeholder="Escribe un mensaje al estudiante..."
+                                    style={{ flex: 1, padding: '0.6rem', background: '#1a1a2e', border: '1px solid #555', color: 'white', borderRadius: '6px', fontSize: '0.85rem', outline: 'none' }}
+                                />
+                                <button type="submit" disabled={!messageInput.trim()} style={{
+                                    padding: '0.6rem 1rem', background: 'var(--color-gold)', border: 'none',
+                                    color: 'black', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.8rem',
+                                    opacity: messageInput.trim() ? 1 : 0.5
+                                }}>Enviar</button>
+                            </form>
+                        </>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const DirectorDashboard = () => {
     const { 
-        gameState, addPoints, updateUser, editStudent, restoreEnergy, advanceSchoolYear, 
+        gameState, addPoints, updateUser, editStudent, deleteStudent, restoreEnergy, advanceSchoolYear, 
         toggleHouseChatStatus, toggleMagicClassroom, updateDirectorStat, closeCycle, 
         startNewCycle, resetDirectorScore, updateNoticeBoard, resetPetStreaks, 
         resetPlantStreaks, setDailyChallenge, setDailyTrivia, triggerEvent, resolveEvent,
-        toggleActivity, adjustStudentXP
+        toggleActivity, adjustStudentXP, addHouseCupRecord
     } = useGame();
     const [pointsToAdd, setPointsToAdd] = useState(10);
     const [selectedHouse, setSelectedHouse] = useState('phoenix');
-    const [editingStudent, setEditingStudent] = useState(null);
+    const [studentToDelete, setStudentToDelete] = useState(null);
+
+    const handleDeleteClick = (student) => {
+        setStudentToDelete(student);
+    };
+
+    const confirmDelete = () => {
+        if (studentToDelete) {
+            deleteStudent(studentToDelete.id);
+            setStudentToDelete(null);
+            showToast('🗑 Estudiante eliminado', '#e74c3c');
+        }
+    };
+
+    const cancelDelete = () => setStudentToDelete(null);
     const fileInputRef = useRef(null);
 
     // Toast Feedback
@@ -250,6 +503,14 @@ const DirectorDashboard = () => {
             }
         }
     };
+
+    const modalOverlayStyle = {
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
+    };
+    const modalContentStyle = { background: '#1a1a1a', padding: '2rem', borderRadius: '8px', border: '1px solid #444', width: '300px' };
+    const confirmButtonStyle = { padding: '0.5rem 1rem', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' };
+    const cancelButtonStyle = { padding: '0.5rem 1rem', background: '#333', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' };
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', position: 'relative' }}>
@@ -714,7 +975,7 @@ const DirectorDashboard = () => {
                 <div className="card">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
                         <Star color="var(--color-gold)" />
-                        <h3>Otorgar Puntos</h3>
+                        <h3>Otorgar Puntos Rápidos</h3>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                         <select
@@ -738,6 +999,49 @@ const DirectorDashboard = () => {
                             style={{ padding: '0.5rem', background: 'var(--color-gold)', color: 'black', border: 'none', fontWeight: 'bold' }}
                         >
                             Otorgar
+                        </button>
+                    </div>
+                </div>
+
+                {/* --- NUEVO: Historial de Copas --- */}
+                <div className="card" style={{ marginTop: '2rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                        <Trophy color="var(--color-gold)" />
+                        <h3>Registrar Copa Anterior</h3>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ fontSize: '0.8rem', color: '#aaa' }}>Año</label>
+                                <input type="number" id="cupYear" defaultValue={new Date().getFullYear() - 1} style={{ padding: '0.5rem', background: '#333', color: 'white', border: '1px solid #555', width: '100%' }} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ fontSize: '0.8rem', color: '#aaa' }}>Casa Ganadora</label>
+                                <select id="cupWinner" style={{ padding: '0.5rem', background: '#333', color: 'white', border: '1px solid #555', width: '100%' }}>
+                                    <option value="phoenix">Phoenix</option>
+                                    <option value="hipocampus">Hipocampus</option>
+                                    <option value="unicornius">Unicornius</option>
+                                    <option value="vipera">Vipera</option>
+                                </select>
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ fontSize: '0.8rem', color: '#aaa' }}>Puntos</label>
+                                <input type="number" id="cupPoints" defaultValue={4000} style={{ padding: '0.5rem', background: '#333', color: 'white', border: '1px solid #555', width: '100%' }} />
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => {
+                                const year = document.getElementById('cupYear').value;
+                                const winner = document.getElementById('cupWinner').value;
+                                const points = document.getElementById('cupPoints').value;
+                                if(year && winner && points) {
+                                    addHouseCupRecord({ year: parseInt(year), winner, points: parseInt(points) });
+                                    alert('Copa registrada correctamente.');
+                                }
+                            }}
+                            className="button-primary"
+                        >
+                            Guardar Registro
                         </button>
                     </div>
                 </div>
@@ -1008,6 +1312,7 @@ const DirectorDashboard = () => {
                             { key: 'reading', label: '📖 Lectura Encantada' },
                             { key: 'challenge', label: '🧙‍♂️ Desafío del Director' },
                             { key: 'trivia', label: '🔮 Incógnita Diaria' },
+                            { key: 'pergamino', label: '📜 Pergamino Mágico' },
                         ].map(({ key, label }) => {
                             const isOn = gameState.activityToggles?.[key] !== false;
                             return (
@@ -1071,6 +1376,15 @@ const DirectorDashboard = () => {
 
             </div >
 
+                {/* --- SECCIÓN: Glosario Arcano --- */}
+                <ArcaneGlossaryEditor />
+
+                {/* --- SECCIÓN: Mensajes Directos del Director --- */}
+                <DirectorMessagesPanel />
+
+                {/* --- SECCIÓN: Historial de Copa de las Casas --- */}
+                <HouseCupHistory isDirector={true} />
+
             {/* 4. Student Management */}
             <div className="card">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -1131,7 +1445,7 @@ const DirectorDashboard = () => {
                                             <Zap size={15} fill="#c084fc" />
                                         </button>
                                         {std.role !== 'director' && (
-                                            <button style={{ background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer' }} title="Eliminar">
+                                            <button onClick={() => handleDeleteClick(std)} style={{ background: 'none', border: 'none', color: 'var(--color-danger)', cursor: 'pointer' }} title="Eliminar">
                                                 <Trash2 size={15} />
                                             </button>
                                         )}
@@ -1144,109 +1458,83 @@ const DirectorDashboard = () => {
                 </div>
             </div>
 
+            {studentToDelete && (
+                <div className="modal-overlay">
+                    <div className="modal-neon">
+                        <h3 style={{ color: 'var(--color-primary)', marginTop: 0 }}>Confirmar eliminación</h3>
+                        <p style={{ color: 'var(--color-text-main)' }}>¿Está seguro de eliminar al estudiante {studentToDelete.name}?</p>
+                        <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem', justifyContent: 'flex-end' }}>
+                            <button onClick={cancelDelete} className="btn-neon-violet">Cancelar</button>
+                            <button onClick={confirmDelete} className="btn-neon-gold" style={{ background: 'linear-gradient(135deg, #e74c3c, #c0392b)', border: '1px solid #ff4d4d', boxShadow: '0 0 8px rgba(231,76,60,0.5)', color: 'white' }}>Sí, eliminar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Edit Modal */}
             {
                 editingStudent && (
-                    <div style={{
-                        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                        background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100
-                    }}>
-                        <div className="card magic-border" style={{ width: '400px', background: 'var(--color-surface)', padding: '2rem' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-                                <h3>Editar Estudiante</h3>
-                                <button onClick={() => setEditingStudent(null)} style={{ background: 'none', border: 'none', color: '#ccc', cursor: 'pointer' }}><X /></button>
+                    <div className="modal-overlay">
+                        <div className="modal-neon">
+                            <button onClick={() => setEditingStudent(null)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: '#ccc', cursor: 'pointer' }}><X size={24} /></button>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                                <Edit color="var(--color-primary)" />
+                                <h3 style={{ margin: 0, color: 'var(--color-primary)' }}>Editar Estudiante</h3>
                             </div>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                                <label>
-                                    Nombre:
+                                <div>
+                                    <label className="label-neon">Nombre</label>
                                     <input
                                         type="text"
+                                        className="input-neon"
                                         value={editingStudent.name}
                                         onChange={e => setEditingStudent({ ...editingStudent, name: e.target.value })}
-                                        style={{ width: '100%', padding: '0.5rem', marginTop: '0.2rem', background: '#333', border: '1px solid #555', color: 'white' }}
                                     />
-                                </label>
-                                <label>
-                                    Email:
+                                </div>
+                                <div>
+                                    <label className="label-neon">Email</label>
                                     <input
                                         type="email"
+                                        className="input-neon"
                                         value={editingStudent.email}
                                         onChange={e => setEditingStudent({ ...editingStudent, email: e.target.value })}
-                                        style={{ width: '100%', padding: '0.5rem', marginTop: '0.2rem', background: '#333', border: '1px solid #555', color: 'white' }}
                                     />
-                                </label>
-                                <label>
-                                    Casa:
-                                    <select
-                                        value={editingStudent.house}
-                                        onChange={e => setEditingStudent({ ...editingStudent, house: e.target.value })}
-                                        style={{ width: '100%', padding: '0.5rem', marginTop: '0.2rem', background: '#333', border: '1px solid #555', color: 'white' }}
-                                    >
-                                        <option value="phoenix">Phoenix</option>
-                                        <option value="hipocampus">Hipocampus</option>
-                                        <option value="unicornius">Unicornius</option>
-                                        <option value="vipera">Vipera</option>
-                                    </select>
-                                </label>
-                                <label>
-                                    Año / Rol:
-                                    <select
-                                        value={
-                                            editingStudent.role === 'director'
-                                                ? 'director'
-                                                : editingStudent.role === 'guardian'
-                                                ? 'graduado'
-                                                : editingStudent.course || 1
-                                        }
-                                        onChange={e => handleRoleCourseChange(e.target.value)}
-                                        style={{ width: '100%', padding: '0.5rem', marginTop: '0.2rem', background: '#333', border: '1px solid #555', color: 'white' }}
-                                    >
-                                        <option value="1">1º Año</option>
-                                        <option value="2">2º Año</option>
-                                        <option value="3">3º Año</option>
-                                        <option value="4">4º Año</option>
-                                        <option value="5">5º Año</option>
-                                        <option value="6">6º Año</option>
-                                        <option value="graduado">Guardián (Graduado)</option>
-                                        <option value="director">Director</option>
-                                    </select>
-                                </label>
+                                </div>
                                 <div style={{ display: 'flex', gap: '1rem' }}>
-                                    <label style={{ flex: 1 }}>
-                                        Nivel:
+                                    <div style={{ flex: 1 }}>
+                                        <label className="label-neon">Nivel</label>
                                         <input
                                             type="number"
+                                            className="input-neon"
                                             value={editingStudent.level}
                                             onChange={e => setEditingStudent({ ...editingStudent, level: parseInt(e.target.value) })}
-                                            style={{ width: '100%', padding: '0.5rem', marginTop: '0.2rem', background: '#333', border: '1px solid #555', color: 'white' }}
                                         />
-                                    </label>
-                                    <label style={{ flex: 1 }}>
-                                        XP:
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <label className="label-neon">XP</label>
                                         <input
                                             type="number"
+                                            className="input-neon"
                                             value={editingStudent.xp}
                                             onChange={e => setEditingStudent({ ...editingStudent, xp: parseInt(e.target.value) })}
-                                            style={{ width: '100%', padding: '0.5rem', marginTop: '0.2rem', background: '#333', border: '1px solid #555', color: 'white' }}
                                         />
-                                    </label>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="label-neon">Avatar URL</label>
+                                    <input
+                                        type="text"
+                                        className="input-neon"
+                                        value={editingStudent.avatar || ''}
+                                        onChange={e => setEditingStudent({ ...editingStudent, avatar: e.target.value })}
+                                    />
                                 </div>
 
                                 <button
                                     onClick={handleSaveStudent}
-                                    style={{
-                                        marginTop: '1rem',
-                                        background: 'var(--color-gold)',
-                                        color: 'black',
-                                        padding: '0.8rem',
-                                        border: 'none',
-                                        borderRadius: '4px',
-                                        fontWeight: 'bold',
-                                        cursor: 'pointer',
-                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem'
-                                    }}
+                                    className="btn-neon-gold"
+                                    style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
                                 >
                                     <Save size={18} /> Guardar Cambios
                                 </button>
@@ -1394,7 +1682,9 @@ const TriviaCreatorForm = () => {
             question,
             options,
             correctAnswer,
-            image
+            image,
+            createdAt: Date.now(),
+            expiresAt: Date.now() + 24 * 60 * 60 * 1000
         });
         setSaved(true);
         setTimeout(() => setSaved(false), 3000);

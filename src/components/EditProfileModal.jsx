@@ -13,6 +13,7 @@ const EditProfileModal = ({ isOpen, onClose }) => {
         birthday: user?.birthday || '',
         wandWood: user?.wand?.wood || '',
         wandCore: user?.wand?.core || '',
+        wandImage: user?.wand?.image || '',
         avatar: user?.avatar || ''
     });
 
@@ -33,12 +34,23 @@ const EditProfileModal = ({ isOpen, onClose }) => {
                 setFormData(prev => ({ ...prev, avatar: resizedImage }));
             } catch (error) {
                 console.error("Error resizing image:", error);
-                // Fallback to original if resize fails (though unlikely)
                 const reader = new FileReader();
                 reader.onloadend = () => {
                     setFormData(prev => ({ ...prev, avatar: reader.result }));
                 };
                 reader.readAsDataURL(file);
+            }
+        }
+    };
+
+    const handleWandFileChange = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            try {
+                const resizedImage = await resizeImage(file, 400, 200); // Wands are wider
+                setFormData(prev => ({ ...prev, wandImage: resizedImage }));
+            } catch (error) {
+                console.error("Error resizing wand image:", error);
             }
         }
     };
@@ -52,7 +64,8 @@ const EditProfileModal = ({ isOpen, onClose }) => {
             avatar: formData.avatar,
             wand: {
                 wood: formData.wandWood,
-                core: formData.wandCore
+                core: formData.wandCore,
+                image: formData.wandImage
             }
         });
 
@@ -209,6 +222,27 @@ const EditProfileModal = ({ isOpen, onClose }) => {
                                 className="input-field"
                                 placeholder="Ej. Pluma de Fénix"
                             />
+                        </div>
+                    </div>
+                    
+                    {/* Wand Image Upload */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        <label style={{ color: '#aaa', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <Wand2 size={16} /> Imagen de la Varita
+                        </label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                            {formData.wandImage && (
+                                <img src={formData.wandImage} alt="Varita" style={{ height: '40px', objectFit: 'contain', background: '#111', padding: '0.5rem', borderRadius: '4px' }} />
+                            )}
+                            <label className="button-primary" style={{ cursor: 'pointer', padding: '0.5rem 1rem', fontSize: '0.8rem' }}>
+                                Subir Imagen
+                                <input
+                                    type="file"
+                                    style={{ display: 'none' }}
+                                    accept="image/*"
+                                    onChange={handleWandFileChange}
+                                />
+                            </label>
                         </div>
                     </div>
 

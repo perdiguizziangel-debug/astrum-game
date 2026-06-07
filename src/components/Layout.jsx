@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, User, Lock, LogOut, MessageCircle, BookOpen } from 'lucide-react';
+import { Home, User, Lock, LogOut, MessageCircle, BookOpen, Mail } from 'lucide-react';
 import { useGame } from '../context/GameContext';
 import StrengthBar from './StrengthBar';
 
@@ -57,6 +57,26 @@ const Layout = () => {
                             <>
                                 <NavLink to="/hall/perfil" icon={<User size={18} />} label="Perfil" active={isActive('/hall/perfil')} />
                                 <NavLink to="/hall/sala-comun" icon={<MessageCircle size={18} />} label="Sala" active={isActive('/hall/sala-comun')} />
+                                {/* Messages nav with unread badge */}
+                                {(() => {
+                                    const unread = (gameState.directMessages || []).filter(
+                                        m => m.recipientId === gameState.currentUser.id && !m.read
+                                    ).length;
+                                    return (
+                                        <div style={{ position: 'relative' }}>
+                                            <NavLink to="/hall/mensajes" icon={<Mail size={18} />} label="Mensajes" active={isActive('/hall/mensajes')} />
+                                            {unread > 0 && (
+                                                <span style={{
+                                                    position: 'absolute', top: '-8px', right: '-8px',
+                                                    background: '#e74c3c', color: 'white',
+                                                    borderRadius: '50%', width: '18px', height: '18px',
+                                                    fontSize: '0.65rem', fontWeight: 'bold',
+                                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                                }}>{unread}</span>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
                                 {gameState.currentUser.role === 'director' && !isViewingAsUser && (
                                     <NavLink to="/hall/admin" icon={<Lock size={18} />} label="Panel" active={isActive('/hall/admin')} />
                                 )}

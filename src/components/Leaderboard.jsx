@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useGame } from '../context/GameContext';
 import { Trophy } from 'lucide-react';
+import StudentProfileModal from './StudentProfileModal';
 
 const Leaderboard = () => {
     const { gameState } = useGame();
-    // Sort students by XP
-    const sortedStudents = [...gameState.students].sort((a, b) => b.xp - a.xp).slice(0, 5);
+    const [selectedStudent, setSelectedStudent] = useState(null);
+
+    // Sort students by XP and slice top 10
+    const sortedStudents = [...gameState.students].sort((a, b) => b.xp - a.xp).slice(0, 10);
 
     return (
         <div className="card magic-border">
@@ -33,9 +36,19 @@ const Leaderboard = () => {
                         }}>
                             {index + 1}
                         </span>
-                        <img src={student.avatar} alt={student.name} style={{ width: '32px', height: '32px', borderRadius: '50%' }} />
+                        <img 
+                            src={student.avatar} 
+                            alt={student.name} 
+                            style={{ width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', border: '1px solid #555' }} 
+                            onClick={() => setSelectedStudent(student)}
+                        />
                         <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 'bold' }}>{student.name}</div>
+                            <div 
+                                style={{ fontWeight: 'bold', cursor: 'pointer' }}
+                                onClick={() => setSelectedStudent(student)}
+                            >
+                                {student.name}
+                            </div>
                             <div style={{ fontSize: '0.8rem', color: `var(--color-${student.house})`, textTransform: 'capitalize' }}>
                                 {student.house} • Lvl {student.level}
                             </div>
@@ -44,6 +57,12 @@ const Leaderboard = () => {
                     </li>
                 ))}
             </ul>
+
+            <StudentProfileModal 
+                isOpen={!!selectedStudent} 
+                onClose={() => setSelectedStudent(null)} 
+                student={selectedStudent} 
+            />
         </div>
     );
 };
