@@ -4,6 +4,7 @@ import { resizeImage } from '../utils/imageUtils';
 import { QrCode, UserPlus, Star, Link as LinkIcon, Trash2, Edit, X, Save, Camera, Sparkles, Feather, Zap, ToggleLeft, ToggleRight, ArrowUpDown, ChevronUp, ChevronDown, Scroll, BookOpen, Mail, PlusCircle } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import HouseCupHistory from './HouseCupHistory';
+import AITriviaGenerator from './AITriviaGenerator';
 
 const ChallengeCreatorForm = ({ onSubmit }) => {
     const { gameState } = useGame();
@@ -1054,8 +1055,8 @@ const DirectorDashboard = () => {
                     </div>
                 </div>
 
-                {/* --- SECCIÓN 3B: Incógnita Diaria --- */}
-                <TriviaCreatorForm />
+                {/* --- SECCIÓN 3B: Incógnita Diaria con IA --- */}
+                <AITriviaGenerator />
 
                 {/* --- SECCIÓN 3C: Eventos Globales (Raids) --- */}
                 <div className="card magic-border" style={{ marginTop: '2rem' }}>

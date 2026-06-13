@@ -109,6 +109,14 @@ const INITIAL_STATE = {
     ],
 };
 
+const calculateMilestone = (streak) => {
+    if (streak >= 25) return 25;
+    if (streak >= 15) return 15;
+    if (streak >= 7) return 7;
+    if (streak >= 3) return 3;
+    return 0;
+};
+
 export const GameProvider = ({ children }) => {
     const [gameState, setGameState] = useState(INITIAL_STATE);
     const [isLoading, setIsLoading] = useState(true);
@@ -164,6 +172,35 @@ export const GameProvider = ({ children }) => {
                 if (error) throw error;
                 if (data) {
                     const studentsList = data.map(row => ({ id: row.id, ...row.data }));
+                    
+                    // Asegurar que el director (Magnus Magister) exista en la base de datos de Supabase
+                    const hasDirector = studentsList.some(s => s.role === 'director' || s.id === 999 || s.id === '999');
+                    if (!hasDirector) {
+                        console.log('Seeding director account to Supabase...');
+                        const directorUser = INITIAL_STATE.students.find(s => s.role === 'director' || s.id === 999);
+                        if (directorUser) {
+                            supabase.from('students').insert([{ id: String(directorUser.id), email: directorUser.email, data: directorUser }])
+                                .then(({ error }) => {
+                                    if (error) console.error('Error seeding director to Supabase:', error);
+                                    else console.log('Director account successfully seeded to Supabase!');
+                                });
+                            studentsList.push(directorUser);
+                        }
+                    }
+
+                    // Asegurar que los alumnos por defecto también existan si la base de datos está vacía
+                    if (studentsList.length <= 1) { // Solo contiene al director o está vacía
+                        console.log('Seeding default students to Supabase...');
+                        const defaultStudents = INITIAL_STATE.students.filter(s => s.role !== 'director');
+                        defaultStudents.forEach(s => {
+                            supabase.from('students').insert([{ id: String(s.id), email: s.email, data: s }])
+                                .then(({ error }) => {
+                                    if (error) console.error(`Error seeding student ${s.name}:`, error);
+                                });
+                            studentsList.push(s);
+                        });
+                    }
+                    
                     setGameState(prev => ({ ...prev, students: studentsList }));
                 }
             } catch (e) {
@@ -440,6 +477,17 @@ export const GameProvider = ({ children }) => {
         return () => clearInterval(interval);
     }, [isLoading, gameState.currentUser?.id]);
 
+    const saveStudentToSupabase = async (student) => {
+        try {
+            const { error } = await supabase
+                .from('students')
+                .upsert({ id: String(student.id), email: student.email, data: student });
+            if (error) throw error;
+        } catch (e) {
+            console.error(`Error saving student ${student.id} to Supabase:`, e);
+        }
+    };
+
     const editStudent = async (id, updates) => {
         setGameState(prev => ({
             ...prev,
@@ -459,16 +507,18 @@ export const GameProvider = ({ children }) => {
     };
 
     const submitPergaminoText = (userId, text, scoreData) => {
+        const user = gameState.students.find(s => s.id === userId);
+        if (!user) return;
+
+        const updatedUser = {
+            ...user,
+            xp: user.xp + scoreData.total,
+            coins: (user.coins || 0) + 10
+        };
+
         setGameState(prev => {
-            const updatedStudents = prev.students.map(s => {
-                if (s.id === userId) {
-                    return { ...s, xp: s.xp + scoreData.total, coins: (s.coins || 0) + 10 };
-                }
-                return s;
-            });
-            const updatedCurrentUser = prev.currentUser?.id === userId ? updatedStudents.find(s => s.id === userId) : prev.currentUser;
-            
-            // Log interaction
+            const updatedStudents = prev.students.map(s => s.id === userId ? updatedUser : s);
+            const updatedCurrentUser = prev.currentUser?.id === userId ? updatedUser : prev.currentUser;
             const newHistory = [...(prev.interactionHistory || []), {
                 id: Date.now(),
                 userId,
@@ -477,9 +527,10 @@ export const GameProvider = ({ children }) => {
                 score: scoreData,
                 timestamp: Date.now()
             }];
-
             return { ...prev, students: updatedStudents, currentUser: updatedCurrentUser, interactionHistory: newHistory };
         });
+
+        saveStudentToSupabase(updatedUser);
     };
 
     const updateArcaneGlossary = (newGlossary) => {
@@ -688,16 +739,36 @@ export const GameProvider = ({ children }) => {
         }));
     };
 
-    const resetPetStreaks = () => {
-        setGameState(prev => ({
-            ...prev,
-            students: prev.students.map(student => ({
+    const resetPetStreaks = async () => {
+        let updatedStudents = [];
+        setGameState(prev => {
+            updatedStudents = prev.students.map(student => ({
                 ...student,
                 streakAnimal: 0,
                 lastFullPetDate: "",
                 petHistory: {}
-            }))
-        }));
+            }));
+            return {
+                ...prev,
+                students: updatedStudents,
+                currentUser: prev.currentUser
+                    ? { ...prev.currentUser, streakAnimal: 0, lastFullPetDate: "", petHistory: {} }
+                    : null
+            };
+        });
+
+        try {
+            const { error } = await supabase.from('students').upsert(
+                updatedStudents.map(s => ({
+                    id: s.id,
+                    email: s.email,
+                    data: s
+                }))
+            );
+            if (error) throw error;
+        } catch (e) {
+            console.error("Error resetting pet streaks in Supabase:", e);
+        }
     };
 
     const voteDirectorStats = (userId, votes) => {
@@ -772,6 +843,125 @@ export const GameProvider = ({ children }) => {
         });
     };
 
+    const resetPlantStreaks = async () => {
+        let updatedStudents = [];
+        setGameState(prev => {
+            updatedStudents = prev.students.map(student => ({
+                ...student,
+                streakPlant: 0,
+                lastFullPlantDate: "",
+                plantHistory: {}
+            }));
+            return {
+                ...prev,
+                students: updatedStudents,
+                currentUser: prev.currentUser
+                    ? { ...prev.currentUser, streakPlant: 0, lastFullPlantDate: "", plantHistory: {} }
+                    : null
+            };
+        });
+
+        try {
+            const { error } = await supabase.from('students').upsert(
+                updatedStudents.map(s => ({
+                    id: s.id,
+                    email: s.email,
+                    data: s
+                }))
+            );
+            if (error) throw error;
+        } catch (e) {
+            console.error("Error resetting plant streaks in Supabase:", e);
+        }
+    };
+
+    const startNewCycle = async () => {
+        let updatedStudents = [];
+        setGameState(prev => {
+            updatedStudents = prev.students.map(s => {
+                if (s.role === 'director') return s;
+                return {
+                    ...s,
+                    xp: 0,
+                    level: 1,
+                    streakDirector: 0,
+                    streakAnimal: 0,
+                    petHistory: {},
+                    challengeHistory: {}
+                };
+            });
+            return {
+                ...prev,
+                students: updatedStudents,
+                currentUser: prev.currentUser && prev.currentUser.role !== 'director'
+                    ? {
+                        ...prev.currentUser,
+                        xp: 0,
+                        level: 1,
+                        streakDirector: 0,
+                        streakAnimal: 0,
+                        petHistory: {},
+                        challengeHistory: {}
+                      }
+                    : prev.currentUser
+            };
+        });
+
+        if (updatedStudents.length > 0) {
+            try {
+                const { error } = await supabase.from('students').upsert(
+                    updatedStudents.map(s => ({
+                        id: s.id,
+                        email: s.email,
+                        data: s
+                    }))
+                );
+                if (error) throw error;
+            } catch (e) {
+                console.error("Error persisting new cycle to Supabase:", e);
+            }
+        }
+    };
+
+    const advanceSchoolYear = async () => {
+        let updatedStudents = [];
+        setGameState(prev => {
+            updatedStudents = prev.students.map(s => {
+                if (s.role === 'director' || s.role === 'guardian') return s;
+                if (s.course === 6) {
+                    return { ...s, role: 'guardian', course: 'graduado' };
+                }
+                return { ...s, course: (s.course || 0) + 1 };
+            });
+
+            return {
+                ...prev,
+                students: updatedStudents,
+                lastPromotionYear: new Date().getFullYear(),
+                currentUser: prev.currentUser && prev.currentUser.role !== 'director' && prev.currentUser.role !== 'guardian'
+                    ? (prev.currentUser.course === 6
+                        ? { ...prev.currentUser, role: 'guardian', course: 'graduado' }
+                        : { ...prev.currentUser, course: (prev.currentUser.course || 0) + 1 })
+                    : prev.currentUser
+            };
+        });
+
+        if (updatedStudents.length > 0) {
+            try {
+                const { error } = await supabase.from('students').upsert(
+                    updatedStudents.map(s => ({
+                        id: s.id,
+                        email: s.email,
+                        data: s
+                    }))
+                );
+                if (error) throw error;
+            } catch (e) {
+                console.error("Error persisting advanced school year to Supabase:", e);
+            }
+        }
+    };
+
     if (isLoading) {
         return (
             <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column', backgroundColor: '#0a0a0a', color: '#fff', fontFamily: 'Inter' }}>
@@ -801,6 +991,7 @@ export const GameProvider = ({ children }) => {
             submitPergaminoText,
             updateArcaneGlossary,
             resetPetStreaks,
+            resetPlantStreaks,
             deleteStudent,
             editStudent,
             voteDirectorStats,
@@ -810,25 +1001,53 @@ export const GameProvider = ({ children }) => {
                     houseCupHistory: [record, ...(prev.houseCupHistory || [])]
                 }));
             },
+            setDailyTrivia: (triviaData) => {
+                const now = Date.now();
+                const newTrivia = {
+                    id: now,
+                    question: triviaData.question,
+                    options: triviaData.options,
+                    correctAnswer: triviaData.correctAnswer, // Index of correct option
+                    image: triviaData.image || null,
+                    createdAt: now,
+                    expiresAt: now + 24 * 60 * 60 * 1000, // 24 hours from now
+                    solvedBy: [],
+                    date: new Date().toISOString().split('T')[0],
+                };
+                setGameState(prev => ({ ...prev, dailyTrivia: newTrivia }));
+            },
             submitTriviaAnswer: (userId, optionIndex) => {
+                const trivia = gameState.dailyTrivia;
+                if (!trivia || trivia.solvedBy.includes(userId)) return;
+
+                const isCorrect = optionIndex === trivia.correctAnswer;
+                const newSolvedBy = [...trivia.solvedBy, userId];
+
+                const user = gameState.students.find(s => s.id === userId);
+                if (!user) return;
+
+                let updatedUser = user;
+                if (isCorrect) {
+                    const newEnergy = Math.min(user.strength?.max ?? 100, (user.strength?.current ?? 100) + 10);
+                    updatedUser = {
+                        ...user,
+                        xp: user.xp + 10,
+                        coins: (user.coins || 0) + 5,
+                        triviaSolved: (user.triviaSolved || 0) + 1,
+                        strength: { ...user.strength, current: newEnergy },
+                        lastEnergyRegen: Date.now()
+                    };
+                }
+
                 setGameState(prev => {
-                    const trivia = prev.dailyTrivia;
-                    if (trivia.solvedBy.includes(userId)) return prev;
-                    const isCorrect = optionIndex === trivia.correctAnswer;
-                    const newSolvedBy = [...trivia.solvedBy, userId];
-                    let updatedStudents = prev.students;
-                    if (isCorrect) {
-                        updatedStudents = prev.students.map(s => {
-                            if (s.id === userId) {
-                                const newEnergy = Math.min(s.strength?.max ?? 100, (s.strength?.current ?? 100) + 10);
-                                return { ...s, xp: s.xp + 10, coins: (s.coins || 0) + 5, triviaSolved: (s.triviaSolved || 0) + 1, strength: { ...s.strength, current: newEnergy }, lastEnergyRegen: Date.now() };
-                            }
-                            return s;
-                        });
-                    }
-                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedStudents.find(s => s.id === userId) : prev.currentUser;
+                    const updatedStudents = prev.students.map(s => s.id === userId ? updatedUser : s);
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedUser : prev.currentUser;
                     return { ...prev, students: updatedStudents, currentUser: updatedCurrentUser, dailyTrivia: { ...trivia, solvedBy: newSolvedBy } };
                 });
+
+                if (isCorrect) {
+                    saveStudentToSupabase(updatedUser);
+                }
             },
             triggerEvent: (type) => {
                 setGameState(prev => {
@@ -939,113 +1158,100 @@ export const GameProvider = ({ children }) => {
             },
 
             solveDailyChallenge: (userId, answer) => {
+                const challenge = gameState.dailyChallenge;
+                if (!challenge || !challenge.active) return false;
+
+                const user = gameState.students.find(u => u.id === userId);
+                if (!user) return false;
+
+                const isCorrect = answer.trim().toLowerCase() === challenge.correctAnswer.trim().toLowerCase();
+                const attempt = { challengeId: challenge.id, isCorrect, timestamp: Date.now() };
+
+                const newEnergy = isCorrect
+                    ? Math.min(user.strength?.max ?? 100, (user.strength?.current ?? 100) + 20)
+                    : (user.strength?.current ?? 100);
+
+                const updatedUser = {
+                    ...user,
+                    challengeHistory: { ...(user.challengeHistory || {}), [challenge.id]: attempt },
+                    xp: isCorrect ? user.xp + 20 : user.xp,
+                    streakDirector: isCorrect ? (user.streakDirector || 0) + 1 : 0,
+                    challengesSolved: isCorrect ? (user.challengesSolved || 0) + 1 : (user.challengesSolved || 0),
+                    puzzlesSolved: isCorrect ? (user.puzzlesSolved || 0) + 1 : (user.puzzlesSolved || 0),
+                    strength: { ...user.strength, current: newEnergy },
+                    lastEnergyRegen: isCorrect ? Date.now() : (user.lastEnergyRegen || Date.now())
+                };
+
                 setGameState(prev => {
-                    const challenge = prev.dailyChallenge;
-                    if (!challenge || !challenge.active) return prev;
-
-                    const isCorrect = answer.trim().toLowerCase() === challenge.correctAnswer.trim().toLowerCase();
-                    const attempt = { challengeId: challenge.id, isCorrect, timestamp: Date.now() };
-
-                    const updatedStudents = prev.students.map(u => {
-                        if (u.id === userId) {
-                            // +20 energy on correct challenge
-                            const newEnergy = isCorrect
-                                ? Math.min(u.strength?.max ?? 100, (u.strength?.current ?? 100) + 20)
-                                : (u.strength?.current ?? 100);
-                            return {
-                                ...u,
-                                challengeHistory: { ...(u.challengeHistory || {}), [challenge.id]: attempt },
-                                xp: isCorrect ? u.xp + 20 : u.xp,
-                                streakDirector: isCorrect ? (u.streakDirector || 0) + 1 : 0,
-                                challengesSolved: isCorrect ? (u.challengesSolved || 0) + 1 : (u.challengesSolved || 0),
-                                puzzlesSolved: isCorrect ? (u.puzzlesSolved || 0) + 1 : (u.puzzlesSolved || 0),
-                                strength: { ...u.strength, current: newEnergy },
-                                lastEnergyRegen: isCorrect ? Date.now() : (u.lastEnergyRegen || Date.now())
-                            };
-                        }
-                        return u;
-                    });
-
-                    const user = prev.students.find(u => u.id === userId);
+                    const updatedStudents = prev.students.map(s => s.id === userId ? updatedUser : s);
                     let updatedHouses = { ...prev.houses };
-                    if (isCorrect && user && updatedHouses[user.house]) {
+                    if (isCorrect && updatedHouses[user.house]) {
                         updatedHouses[user.house] = { ...updatedHouses[user.house], points: updatedHouses[user.house].points + 20 };
                     }
-
-                    const updatedCurrentUser = prev.currentUser?.id === userId
-                        ? updatedStudents.find(s => s.id === userId)
-                        : prev.currentUser;
-
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedUser : prev.currentUser;
                     return { ...prev, students: updatedStudents, houses: updatedHouses, currentUser: updatedCurrentUser };
                 });
-                return answer.trim().toLowerCase() === gameState.dailyChallenge.correctAnswer.trim().toLowerCase();
+
+                saveStudentToSupabase(updatedUser);
+
+                return isCorrect;
             },
 
 
             // --- Pet of the Month Logic ---
             interactWithPet: (userId, action) => { // action: 'feed' | 'pet'
-                setGameState(prev => {
-                    const today = new Date().toISOString().split('T')[0];
-                    const yesterdayDate = new Date();
-                    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-                    const yesterday = yesterdayDate.toISOString().split('T')[0];
+                const user = gameState.students.find(s => s.id === userId);
+                if (!user) return;
 
-                    const userIndex = prev.students.findIndex(s => s.id === userId);
-                    if (userIndex === -1) return prev;
+                const today = new Date().toISOString().split('T')[0];
+                const yesterdayDate = new Date();
+                yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+                const yesterday = yesterdayDate.toISOString().split('T')[0];
 
-                    const user = prev.students[userIndex];
-                    const history = user.petHistory || {};
-                    const todayStatus = history[today] || { fed: false, petted: false, rewardClaimed: false }; // rewardClaimed used to track bonus/streak update for day? Re-purposing or keeping simple.
+                const history = user.petHistory || {};
+                const todayStatus = history[today] || { fed: false, petted: false, rewardClaimed: false };
 
-                    // 1. Independent Reward Logic (+10 per action if new)
-                    let pointsToAdd = 0;
-                    if (action === 'feed' && !todayStatus.fed) pointsToAdd += 10;
-                    if (action === 'pet' && !todayStatus.petted) pointsToAdd += 10;
+                let pointsToAdd = 0;
+                if (action === 'feed' && !todayStatus.fed) pointsToAdd += 10;
+                if (action === 'pet' && !todayStatus.petted) pointsToAdd += 10;
 
-                    const newStatus = { ...todayStatus };
-                    if (action === 'feed') newStatus.fed = true;
-                    if (action === 'pet') newStatus.petted = true;
+                const newStatus = { ...todayStatus };
+                if (action === 'feed') newStatus.fed = true;
+                if (action === 'pet') newStatus.petted = true;
 
-                    // 2. Streak Logic (Only if both completed today)
-                    let currentStreak = user.streakAnimal || 0;
-                    let lastFullPetDate = user.lastFullPetDate || ""; // YYYY-MM-DD
-                    let bonusPoints = 0;
+                let currentStreak = user.streakAnimal || 0;
+                let lastFullPetDate = user.lastFullPetDate || "";
+                let bonusPoints = 0;
 
-                    if (newStatus.fed && newStatus.petted) {
-                        // If this is the FIRST time completing both today
-                        if (lastFullPetDate !== today) {
-                            if (lastFullPetDate === yesterday) {
-                                currentStreak += 1;
-                            } else {
-                                // Reset streak to previous milestone if missed a day
-                                currentStreak = calculateMilestone(currentStreak) + 1;
-                            }
-
-                            // Update the last full date
-                            lastFullPetDate = today;
-
-                            // 3. Max Level Bonus (+50 at 25 days)
-                            if (currentStreak === 25) {
-                                bonusPoints = 50;
-                            }
+                if (newStatus.fed && newStatus.petted) {
+                    if (lastFullPetDate !== today) {
+                        if (lastFullPetDate === yesterday) {
+                            currentStreak += 1;
+                        } else {
+                            currentStreak = calculateMilestone(currentStreak) + 1;
+                        }
+                        lastFullPetDate = today;
+                        if (currentStreak === 25) {
+                            bonusPoints = 50;
                         }
                     }
+                }
 
-                    const totalPointsToAdd = pointsToAdd + bonusPoints;
+                const totalPointsToAdd = pointsToAdd + bonusPoints;
 
-                    const updatedStudents = [...prev.students];
-                    updatedStudents[userIndex] = {
-                        ...user,
-                        petHistory: {
-                            ...history,
-                            [today]: newStatus
-                        },
-                        xp: user.xp + totalPointsToAdd,
-                        streakAnimal: currentStreak,
-                        lastFullPetDate: lastFullPetDate
-                    };
+                const updatedUser = {
+                    ...user,
+                    petHistory: {
+                        ...history,
+                        [today]: newStatus
+                    },
+                    xp: user.xp + totalPointsToAdd,
+                    streakAnimal: currentStreak,
+                    lastFullPetDate: lastFullPetDate
+                };
 
-                    // House Points Update
+                setGameState(prev => {
+                    const updatedStudents = prev.students.map(s => s.id === userId ? updatedUser : s);
                     let updatedHouses = { ...prev.houses };
                     if (totalPointsToAdd > 0) {
                         const houseKey = user.house;
@@ -1056,17 +1262,11 @@ export const GameProvider = ({ children }) => {
                             };
                         }
                     }
-
-                    // Sync currentUser
-                    const updatedCurrentUser = prev.currentUser && prev.currentUser.id === userId ? updatedStudents[userIndex] : prev.currentUser;
-
-                    return {
-                        ...prev,
-                        students: updatedStudents,
-                        houses: updatedHouses,
-                        currentUser: updatedCurrentUser
-                    };
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedUser : prev.currentUser;
+                    return { ...prev, students: updatedStudents, houses: updatedHouses, currentUser: updatedCurrentUser };
                 });
+
+                saveStudentToSupabase(updatedUser);
             },
 
             sendFlyingMessage: (message) => {
@@ -1096,65 +1296,58 @@ export const GameProvider = ({ children }) => {
 
             // --- Plant of the Month Logic ---
             interactWithPlant: (userId, action) => { // action: 'water' | 'illuminate'
-                setGameState(prev => {
-                    const today = new Date().toISOString().split('T')[0];
-                    const yesterdayDate = new Date();
-                    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-                    const yesterday = yesterdayDate.toISOString().split('T')[0];
+                const user = gameState.students.find(s => s.id === userId);
+                if (!user) return;
 
-                    const userIndex = prev.students.findIndex(s => s.id === userId);
-                    if (userIndex === -1) return prev;
+                const today = new Date().toISOString().split('T')[0];
+                const yesterdayDate = new Date();
+                yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+                const yesterday = yesterdayDate.toISOString().split('T')[0];
 
-                    const user = prev.students[userIndex];
-                    const history = user.plantHistory || {};
-                    const todayStatus = history[today] || { watered: false, illuminated: false };
+                const history = user.plantHistory || {};
+                const todayStatus = history[today] || { watered: false, illuminated: false };
 
-                    // 1. Independent Reward Logic (+10 per action if new)
-                    let pointsToAdd = 0;
-                    if (action === 'water' && !todayStatus.watered) pointsToAdd += 10;
-                    if (action === 'illuminate' && !todayStatus.illuminated) pointsToAdd += 10;
+                let pointsToAdd = 0;
+                if (action === 'water' && !todayStatus.watered) pointsToAdd += 10;
+                if (action === 'illuminate' && !todayStatus.illuminated) pointsToAdd += 10;
 
-                    const newStatus = { ...todayStatus };
-                    if (action === 'water') newStatus.watered = true;
-                    if (action === 'illuminate') newStatus.illuminated = true;
+                const newStatus = { ...todayStatus };
+                if (action === 'water') newStatus.watered = true;
+                if (action === 'illuminate') newStatus.illuminated = true;
 
-                    // 2. Streak Logic (Only if both completed today)
-                    let currentStreak = user.streakPlant || 0;
-                    let lastFullPlantDate = user.lastFullPlantDate || "";
-                    let bonusPoints = 0;
+                let currentStreak = user.streakPlant || 0;
+                let lastFullPlantDate = user.lastFullPlantDate || "";
+                let bonusPoints = 0;
 
-                    if (newStatus.watered && newStatus.illuminated) {
-                        if (lastFullPlantDate !== today) {
-                            if (lastFullPlantDate === yesterday) {
-                                currentStreak += 1;
-                            } else {
-                                currentStreak = calculateMilestone(currentStreak) + 1;
-                            }
-
-                            lastFullPlantDate = today;
-
-                            // 3. Max Level Bonus (+50 at 25 days)
-                            if (currentStreak === 25) {
-                                bonusPoints = 50;
-                            }
+                if (newStatus.watered && newStatus.illuminated) {
+                    if (lastFullPlantDate !== today) {
+                        if (lastFullPlantDate === yesterday) {
+                            currentStreak += 1;
+                        } else {
+                            currentStreak = calculateMilestone(currentStreak) + 1;
+                        }
+                        lastFullPlantDate = today;
+                        if (currentStreak === 25) {
+                            bonusPoints = 50;
                         }
                     }
+                }
 
-                    const totalPointsToAdd = pointsToAdd + bonusPoints;
+                const totalPointsToAdd = pointsToAdd + bonusPoints;
 
-                    const updatedStudents = [...prev.students];
-                    updatedStudents[userIndex] = {
-                        ...user,
-                        plantHistory: {
-                            ...history,
-                            [today]: newStatus
-                        },
-                        xp: user.xp + totalPointsToAdd,
-                        streakPlant: currentStreak,
-                        lastFullPlantDate: lastFullPlantDate
-                    };
+                const updatedUser = {
+                    ...user,
+                    plantHistory: {
+                        ...history,
+                        [today]: newStatus
+                    },
+                    xp: user.xp + totalPointsToAdd,
+                    streakPlant: currentStreak,
+                    lastFullPlantDate: lastFullPlantDate
+                };
 
-                    // House Points Update
+                setGameState(prev => {
+                    const updatedStudents = prev.students.map(s => s.id === userId ? updatedUser : s);
                     let updatedHouses = { ...prev.houses };
                     if (totalPointsToAdd > 0) {
                         const houseKey = user.house;
@@ -1165,87 +1358,79 @@ export const GameProvider = ({ children }) => {
                             };
                         }
                     }
-
-                    // Sync currentUser
-                    const updatedCurrentUser = prev.currentUser && prev.currentUser.id === userId ? updatedStudents[userIndex] : prev.currentUser;
-
-                    return {
-                        ...prev,
-                        students: updatedStudents,
-                        houses: updatedHouses,
-                        currentUser: updatedCurrentUser
-                    };
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedUser : prev.currentUser;
+                    return { ...prev, students: updatedStudents, houses: updatedHouses, currentUser: updatedCurrentUser };
                 });
+
+                saveStudentToSupabase(updatedUser);
             },
 
             // --- Magic Breakfast Logic ---
             interactWithBreakfast: (userId, action) => { // action: 'prepare' | 'eat'
-                setGameState(prev => {
-                    const today = new Date().toISOString().split('T')[0];
-                    const yesterdayDate = new Date();
-                    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-                    const yesterday = yesterdayDate.toISOString().split('T')[0];
-                    const now = new Date();
-                    const currentHour = now.getHours();
-                    const isBeforeNine = currentHour < 9;
+                const user = gameState.students.find(s => s.id === userId);
+                if (!user) return;
 
-                    const userIndex = prev.students.findIndex(s => s.id === userId);
-                    if (userIndex === -1) return prev;
+                const today = new Date().toISOString().split('T')[0];
+                const yesterdayDate = new Date();
+                yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+                const yesterday = yesterdayDate.toISOString().split('T')[0];
+                const now = new Date();
+                const currentHour = now.getHours();
+                const isBeforeNine = currentHour < 9;
 
-                    const user = prev.students[userIndex];
-                    const history = user.breakfastHistory || {};
-                    const todayStatus = history[today] || { prepared: false, eaten: false, time: null };
+                const history = user.breakfastHistory || {};
+                const todayStatus = history[today] || { prepared: false, eaten: false, time: null };
 
-                    let pointsToAdd = 0;
-                    if (action === 'prepare' && !todayStatus.prepared) pointsToAdd += 10;
-                    if (action === 'eat' && !todayStatus.eaten) pointsToAdd += 10;
+                let pointsToAdd = 0;
+                if (action === 'prepare' && !todayStatus.prepared) pointsToAdd += 10;
+                if (action === 'eat' && !todayStatus.eaten) pointsToAdd += 10;
 
-                    const newStatus = { ...todayStatus };
-                    if (action === 'prepare') newStatus.prepared = true;
-                    if (action === 'eat') {
-                        newStatus.eaten = true;
-                        if (!newStatus.time) newStatus.time = isBeforeNine ? 'before9' : 'after9';
-                    }
+                const newStatus = { ...todayStatus };
+                if (action === 'prepare') newStatus.prepared = true;
+                if (action === 'eat') {
+                    newStatus.eaten = true;
+                    if (!newStatus.time) newStatus.time = isBeforeNine ? 'before9' : 'after9';
+                }
 
-                    // Streak Logic
-                    let currentStreak = user.streakBreakfast || 0;
-                    let lastFullDate = user.lastFullBreakfastDate || "";
-                    let bonusPoints = 0;
+                // Streak Logic
+                let currentStreak = user.streakBreakfast || 0;
+                let lastFullDate = user.lastFullBreakfastDate || "";
+                let bonusPoints = 0;
 
-                    if (newStatus.prepared && newStatus.eaten) {
-                        if (lastFullDate !== today) {
-                            if (lastFullDate === yesterday) {
-                                currentStreak += 1;
-                            } else {
-                                currentStreak = calculateMilestone(currentStreak) + 1;
-                            }
-                            lastFullDate = today;
-                            if (currentStreak === 25) bonusPoints = 50;
+                if (newStatus.prepared && newStatus.eaten) {
+                    if (lastFullDate !== today) {
+                        if (lastFullDate === yesterday) {
+                            currentStreak += 1;
+                        } else {
+                            currentStreak = calculateMilestone(currentStreak) + 1;
                         }
+                        lastFullDate = today;
+                        if (currentStreak === 25) bonusPoints = 50;
                     }
+                }
 
-                    const totalPointsToAdd = pointsToAdd + bonusPoints;
+                const totalPointsToAdd = pointsToAdd + bonusPoints;
 
-                    // Restore strength to max when eating breakfast
-                    const strengthUpdate = (action === 'eat' && !todayStatus.eaten)
-                        ? { strength: { ...user.strength, current: user.strength?.max || 100 } }
-                        : {};
+                // Restore strength to max when eating breakfast
+                const strengthUpdate = (action === 'eat' && !todayStatus.eaten)
+                    ? { strength: { ...user.strength, current: user.strength?.max || 100 } }
+                    : {};
 
-                    // +10 exp_fuerza bonus on prepare, +50 on eat
-                    const expFuerzaGain = action === 'prepare' ? 10 : action === 'eat' ? 50 : 0;
+                // +10 exp_fuerza bonus on prepare, +50 on eat
+                const expFuerzaGain = action === 'prepare' ? 10 : action === 'eat' ? 50 : 0;
 
-                    const updatedStudents = [...prev.students];
-                    updatedStudents[userIndex] = {
-                        ...user,
-                        ...strengthUpdate,
-                        breakfastHistory: { ...history, [today]: newStatus },
-                        xp: user.xp + totalPointsToAdd,
-                        streakBreakfast: currentStreak,
-                        lastFullBreakfastDate: lastFullDate,
-                        expFuerza: (user.expFuerza || 0) + expFuerzaGain
-                    };
+                const updatedUser = {
+                    ...user,
+                    ...strengthUpdate,
+                    breakfastHistory: { ...history, [today]: newStatus },
+                    xp: user.xp + totalPointsToAdd,
+                    streakBreakfast: currentStreak,
+                    lastFullBreakfastDate: lastFullDate,
+                    expFuerza: (user.expFuerza || 0) + expFuerzaGain
+                };
 
-                    // House Points
+                setGameState(prev => {
+                    const updatedStudents = prev.students.map(s => s.id === userId ? updatedUser : s);
                     let updatedHouses = { ...prev.houses };
                     if (totalPointsToAdd > 0) {
                         const houseKey = user.house;
@@ -1256,73 +1441,69 @@ export const GameProvider = ({ children }) => {
                             };
                         }
                     }
-
-                    return {
-                        ...prev,
-                        students: updatedStudents,
-                        houses: updatedHouses,
-                        currentUser: prev.currentUser && prev.currentUser.id === userId ? updatedStudents[userIndex] : prev.currentUser
-                    };
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedUser : prev.currentUser;
+                    return { ...prev, students: updatedStudents, houses: updatedHouses, currentUser: updatedCurrentUser };
                 });
+
+                saveStudentToSupabase(updatedUser);
             },
 
             // --- Wisdom Candle Logic ---
             interactWithCandle: (userId, action) => { // action: 'light' | 'focus'
-                setGameState(prev => {
-                    const today = new Date().toISOString().split('T')[0];
-                    const yesterdayDate = new Date();
-                    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-                    const yesterday = yesterdayDate.toISOString().split('T')[0];
+                const user = gameState.students.find(s => s.id === userId);
+                if (!user) return;
 
-                    const userIndex = prev.students.findIndex(s => s.id === userId);
-                    if (userIndex === -1) return prev;
+                const today = new Date().toISOString().split('T')[0];
+                const yesterdayDate = new Date();
+                yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+                const yesterday = yesterdayDate.toISOString().split('T')[0];
 
-                    const user = prev.students[userIndex];
-                    const history = user.candleHistory || {};
-                    const todayStatus = history[today] || { lit: false, focused: false };
+                const history = user.candleHistory || {};
+                const todayStatus = history[today] || { lit: false, focused: false };
 
-                    let pointsToAdd = 0;
-                    if (action === 'light' && !todayStatus.lit) pointsToAdd += 10;
-                    if (action === 'focus' && !todayStatus.focused) pointsToAdd += 10;
+                let pointsToAdd = 0;
+                if (action === 'light' && !todayStatus.lit) pointsToAdd += 10;
+                if (action === 'focus' && !todayStatus.focused) pointsToAdd += 10;
 
-                    const newStatus = { ...todayStatus };
-                    if (action === 'light') newStatus.lit = true;
-                    if (action === 'focus') newStatus.focused = true;
+                const newStatus = { ...todayStatus };
+                if (action === 'light') newStatus.lit = true;
+                if (action === 'focus') newStatus.focused = true;
 
-                    let currentStreak = user.streakCandle || 0;
-                    let lastFullDate = user.lastFullCandleDate || "";
-                    let bonusPoints = 0;
+                let currentStreak = user.streakCandle || 0;
+                let lastFullDate = user.lastFullCandleDate || "";
+                let bonusPoints = 0;
 
-                    if (newStatus.lit && newStatus.focused) {
-                        if (lastFullDate !== today) {
-                            if (lastFullDate === yesterday) {
-                                currentStreak += 1;
-                            } else {
-                                currentStreak = calculateMilestone(currentStreak) + 1;
-                            }
-                            lastFullDate = today;
-                            if (currentStreak === 25) bonusPoints = 50;
+                if (newStatus.lit && newStatus.focused) {
+                    if (lastFullDate !== today) {
+                        if (lastFullDate === yesterday) {
+                            currentStreak += 1;
+                        } else {
+                            currentStreak = calculateMilestone(currentStreak) + 1;
                         }
+                        lastFullDate = today;
+                        if (currentStreak === 25) bonusPoints = 50;
                     }
+                }
 
-                    const totalPointsToAdd = pointsToAdd + bonusPoints;
+                const totalPointsToAdd = pointsToAdd + bonusPoints;
 
-                    // Add wisdom points on focus
-                    const wisdomGain = (action === 'focus' && !todayStatus.focused) ? 10 : 0;
-                    const currentWisdom = user.wisdom || { points: 0, level: 1 };
-                    const newWisdomPoints = currentWisdom.points + wisdomGain;
-                    const newWisdomLevel = Math.floor(newWisdomPoints / 50) + 1;
+                // Add wisdom points on focus
+                const wisdomGain = (action === 'focus' && !todayStatus.focused) ? 10 : 0;
+                const currentWisdom = user.wisdom || { points: 0, level: 1 };
+                const newWisdomPoints = currentWisdom.points + wisdomGain;
+                const newWisdomLevel = Math.floor(newWisdomPoints / 50) + 1;
 
-                    const updatedStudents = [...prev.students];
-                    updatedStudents[userIndex] = {
-                        ...user,
-                        candleHistory: { ...history, [today]: newStatus },
-                        xp: user.xp + totalPointsToAdd,
-                        streakCandle: currentStreak,
-                        lastFullCandleDate: lastFullDate,
-                        wisdom: { points: newWisdomPoints, level: newWisdomLevel }
-                    };
+                const updatedUser = {
+                    ...user,
+                    candleHistory: { ...history, [today]: newStatus },
+                    xp: user.xp + totalPointsToAdd,
+                    streakCandle: currentStreak,
+                    lastFullCandleDate: lastFullDate,
+                    wisdom: { points: newWisdomPoints, level: newWisdomLevel }
+                };
 
+                setGameState(prev => {
+                    const updatedStudents = prev.students.map(s => s.id === userId ? updatedUser : s);
                     let updatedHouses = { ...prev.houses };
                     if (totalPointsToAdd > 0) {
                         const houseKey = user.house;
@@ -1333,66 +1514,62 @@ export const GameProvider = ({ children }) => {
                             };
                         }
                     }
-
-                    return {
-                        ...prev,
-                        students: updatedStudents,
-                        houses: updatedHouses,
-                        currentUser: prev.currentUser && prev.currentUser.id === userId ? updatedStudents[userIndex] : prev.currentUser
-                    };
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedUser : prev.currentUser;
+                    return { ...prev, students: updatedStudents, houses: updatedHouses, currentUser: updatedCurrentUser };
                 });
+
+                saveStudentToSupabase(updatedUser);
             },
 
             // --- Artistic Moment Logic ---
             interactWithArt: (userId, action) => { // action: 'paint' | 'music'
-                setGameState(prev => {
-                    const today = new Date().toISOString().split('T')[0];
-                    const yesterdayDate = new Date();
-                    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-                    const yesterday = yesterdayDate.toISOString().split('T')[0];
+                const user = gameState.students.find(s => s.id === userId);
+                if (!user) return;
 
-                    const userIndex = prev.students.findIndex(s => s.id === userId);
-                    if (userIndex === -1) return prev;
+                const today = new Date().toISOString().split('T')[0];
+                const yesterdayDate = new Date();
+                yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+                const yesterday = yesterdayDate.toISOString().split('T')[0];
 
-                    const user = prev.students[userIndex];
-                    const history = user.artHistory || {};
-                    const todayStatus = history[today] || { paint: false, music: false };
+                const history = user.artHistory || {};
+                const todayStatus = history[today] || { paint: false, music: false };
 
-                    let pointsToAdd = 0;
-                    if (action === 'paint' && !todayStatus.paint) pointsToAdd += 10;
-                    if (action === 'music' && !todayStatus.music) pointsToAdd += 10;
+                let pointsToAdd = 0;
+                if (action === 'paint' && !todayStatus.paint) pointsToAdd += 10;
+                if (action === 'music' && !todayStatus.music) pointsToAdd += 10;
 
-                    const newStatus = { ...todayStatus };
-                    if (action === 'paint') newStatus.paint = true;
-                    if (action === 'music') newStatus.music = true;
+                const newStatus = { ...todayStatus };
+                if (action === 'paint') newStatus.paint = true;
+                if (action === 'music') newStatus.music = true;
 
-                    let currentStreak = user.streakArt || 0;
-                    let lastFullDate = user.lastFullArtDate || "";
-                    let bonusPoints = 0;
+                let currentStreak = user.streakArt || 0;
+                let lastFullDate = user.lastFullArtDate || "";
+                let bonusPoints = 0;
 
-                    if (newStatus.paint && newStatus.music) {
-                        if (lastFullDate !== today) {
-                            if (lastFullDate === yesterday) {
-                                currentStreak += 1;
-                            } else {
-                                currentStreak = calculateMilestone(currentStreak) + 1;
-                            }
-                            lastFullDate = today;
-                            if (currentStreak === 25) bonusPoints = 50;
+                if (newStatus.paint && newStatus.music) {
+                    if (lastFullDate !== today) {
+                        if (lastFullDate === yesterday) {
+                            currentStreak += 1;
+                        } else {
+                            currentStreak = calculateMilestone(currentStreak) + 1;
                         }
+                        lastFullDate = today;
+                        if (currentStreak === 25) bonusPoints = 50;
                     }
+                }
 
-                    const totalPointsToAdd = pointsToAdd + bonusPoints;
+                const totalPointsToAdd = pointsToAdd + bonusPoints;
 
-                    const updatedStudents = [...prev.students];
-                    updatedStudents[userIndex] = {
-                        ...user,
-                        artHistory: { ...history, [today]: newStatus },
-                        xp: user.xp + totalPointsToAdd,
-                        streakArt: currentStreak,
-                        lastFullArtDate: lastFullDate
-                    };
+                const updatedUser = {
+                    ...user,
+                    artHistory: { ...history, [today]: newStatus },
+                    xp: user.xp + totalPointsToAdd,
+                    streakArt: currentStreak,
+                    lastFullArtDate: lastFullDate
+                };
 
+                setGameState(prev => {
+                    const updatedStudents = prev.students.map(s => s.id === userId ? updatedUser : s);
                     let updatedHouses = { ...prev.houses };
                     if (totalPointsToAdd > 0) {
                         const houseKey = user.house;
@@ -1403,57 +1580,53 @@ export const GameProvider = ({ children }) => {
                             };
                         }
                     }
-
-                    return {
-                        ...prev,
-                        students: updatedStudents,
-                        houses: updatedHouses,
-                        currentUser: prev.currentUser && prev.currentUser.id === userId ? updatedStudents[userIndex] : prev.currentUser
-                    };
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedUser : prev.currentUser;
+                    return { ...prev, students: updatedStudents, houses: updatedHouses, currentUser: updatedCurrentUser };
                 });
+
+                saveStudentToSupabase(updatedUser);
             },
 
             // --- Reading (Lectura Encantada) Logic ---
             interactWithReading: (userId) => {
+                const user = gameState.students.find(s => s.id === userId);
+                if (!user) return;
+
+                const today = new Date().toISOString().split('T')[0];
+                const yesterdayDate = new Date();
+                yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+                const yesterday = yesterdayDate.toISOString().split('T')[0];
+
+                const history = user.readingHistory || {};
+                if (history[today]?.done) return; // Already done today
+
+                let currentStreak = user.streakReading || 0;
+                const lastFullDate = user.lastReadingDate || '';
+                let bonusPoints = 0;
+
+                if (lastFullDate === yesterday) {
+                    currentStreak += 1;
+                } else if (lastFullDate !== today) {
+                    currentStreak = 1;
+                }
+
+                if (currentStreak === 25) bonusPoints = 50;
+                const xpGain = 20 + bonusPoints;
+                const wisdomGain = 5;
+                const currentWisdom = user.wisdom || { points: 0, level: 1 };
+                const newWisdomPoints = currentWisdom.points + wisdomGain;
+
+                const updatedUser = {
+                    ...user,
+                    readingHistory: { ...history, [today]: { done: true, timestamp: Date.now() } },
+                    xp: user.xp + xpGain,
+                    streakReading: currentStreak,
+                    lastReadingDate: today,
+                    wisdom: { points: newWisdomPoints, level: Math.floor(newWisdomPoints / 50) + 1 }
+                };
+
                 setGameState(prev => {
-                    const today = new Date().toISOString().split('T')[0];
-                    const yesterdayDate = new Date();
-                    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-                    const yesterday = yesterdayDate.toISOString().split('T')[0];
-
-                    const userIndex = prev.students.findIndex(s => s.id === userId);
-                    if (userIndex === -1) return prev;
-
-                    const user = prev.students[userIndex];
-                    const history = user.readingHistory || {};
-                    if (history[today]?.done) return prev; // Already done today
-
-                    let currentStreak = user.streakReading || 0;
-                    const lastFullDate = user.lastReadingDate || '';
-                    let bonusPoints = 0;
-
-                    if (lastFullDate === yesterday) {
-                        currentStreak += 1;
-                    } else if (lastFullDate !== today) {
-                        currentStreak = 1;
-                    }
-
-                    if (currentStreak === 25) bonusPoints = 50;
-                    const xpGain = 20 + bonusPoints;
-                    const wisdomGain = 5;
-                    const currentWisdom = user.wisdom || { points: 0, level: 1 };
-                    const newWisdomPoints = currentWisdom.points + wisdomGain;
-
-                    const updatedStudents = [...prev.students];
-                    updatedStudents[userIndex] = {
-                        ...user,
-                        readingHistory: { ...history, [today]: { done: true, timestamp: Date.now() } },
-                        xp: user.xp + xpGain,
-                        streakReading: currentStreak,
-                        lastReadingDate: today,
-                        wisdom: { points: newWisdomPoints, level: Math.floor(newWisdomPoints / 50) + 1 }
-                    };
-
+                    const updatedStudents = prev.students.map(s => s.id === userId ? updatedUser : s);
                     let updatedHouses = { ...prev.houses };
                     const houseKey = user.house;
                     if (updatedHouses[houseKey]) {
@@ -1462,56 +1635,46 @@ export const GameProvider = ({ children }) => {
                             points: updatedHouses[houseKey].points + xpGain
                         };
                     }
-
-                    return {
-                        ...prev,
-                        students: updatedStudents,
-                        houses: updatedHouses,
-                        currentUser: prev.currentUser?.id === userId ? updatedStudents[userIndex] : prev.currentUser
-                    };
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedUser : prev.currentUser;
+                    return { ...prev, students: updatedStudents, houses: updatedHouses, currentUser: updatedCurrentUser };
                 });
-            },
 
-            completeDailyChallenge,
+                saveStudentToSupabase(updatedUser);
+            },
 
             // --- Attendance Logic ---
             recordAttendance: (userId) => {
+                const user = gameState.students.find(s => s.id === userId);
+                if (!user) return;
+
+                const today = new Date().toISOString().split('T')[0];
+                const yesterdayDate = new Date();
+                yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+                const yesterday = yesterdayDate.toISOString().split('T')[0];
+
+                if (user.lastAttendanceDate === today) return; // Already attended today
+
+                let currentStreak = user.streakAttendance || 0;
+                if (user.lastAttendanceDate === yesterday) {
+                    currentStreak += 1;
+                } else {
+                    currentStreak = calculateMilestone(currentStreak) + 1;
+                }
+
+                const newAttendanceEnergy = Math.min(user.strength?.max ?? 100, (user.strength?.current ?? 100) + 30);
+
+                const updatedUser = {
+                    ...user,
+                    streakAttendance: currentStreak,
+                    totalAttendance: (user.totalAttendance || 0) + 1,
+                    lastAttendanceDate: today,
+                    xp: user.xp + 50,
+                    strength: { ...user.strength, current: newAttendanceEnergy },
+                    lastEnergyRegen: Date.now()
+                };
+
                 setGameState(prev => {
-                    const today = new Date().toISOString().split('T')[0];
-                    const yesterdayDate = new Date();
-                    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-                    const yesterday = yesterdayDate.toISOString().split('T')[0];
-
-                    const userIndex = prev.students.findIndex(s => s.id === userId);
-                    if (userIndex === -1) return prev;
-
-                    const user = prev.students[userIndex];
-                    if (user.lastAttendanceDate === today) return prev; // Already attended today
-
-                    let currentStreak = user.streakAttendance || 0;
-                    if (user.lastAttendanceDate === yesterday) {
-                        currentStreak += 1;
-                    } else {
-                        // Reset streak to previous milestone if missed a day
-                        // If first time (streak 0), calculateMilestone(0) is 0, so becomes 1. Correct.
-                        currentStreak = calculateMilestone(currentStreak) + 1;
-                    }
-
-                    // +30 energy on attendance
-                    const newAttendanceEnergy = Math.min(user.strength?.max ?? 100, (user.strength?.current ?? 100) + 30);
-
-                    const updatedStudents = [...prev.students];
-                    updatedStudents[userIndex] = {
-                        ...user,
-                        streakAttendance: currentStreak,
-                        totalAttendance: (user.totalAttendance || 0) + 1,
-                        lastAttendanceDate: today,
-                        xp: user.xp + 50,
-                        strength: { ...user.strength, current: newAttendanceEnergy },
-                        lastEnergyRegen: Date.now()
-                    };
-
-                    // House Points
+                    const updatedStudents = prev.students.map(s => s.id === userId ? updatedUser : s);
                     let updatedHouses = { ...prev.houses };
                     const houseKey = user.house;
                     if (updatedHouses[houseKey]) {
@@ -1520,17 +1683,11 @@ export const GameProvider = ({ children }) => {
                             points: updatedHouses[houseKey].points + 50
                         };
                     }
-
-                    // Sync currentUser
-                    const updatedCurrentUser = prev.currentUser && prev.currentUser.id === userId ? updatedStudents[userIndex] : prev.currentUser;
-
-                    return {
-                        ...prev,
-                        students: updatedStudents,
-                        houses: updatedHouses,
-                        currentUser: updatedCurrentUser
-                    };
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedUser : prev.currentUser;
+                    return { ...prev, students: updatedStudents, houses: updatedHouses, currentUser: updatedCurrentUser };
                 });
+
+                saveStudentToSupabase(updatedUser);
             },
 
             // --- Admin Functions ---
@@ -1574,72 +1731,91 @@ export const GameProvider = ({ children }) => {
             // --- Generic Activity Logic (Aula de Magia) ---
             // Energy cost per activity ID
             completeActivity: (userId, activityId, points) => {
-                const ENERGY_COST = { objectHunt: 15, vision: 20, text: 15, potion: 25, spellTyper: 20 };
+                const ENERGY_COST = {
+                    objectHunt: 15,
+                    visionTest: 20,
+                    textDetective: 15,
+                    potionMaster: 25,
+                    spellTyper: 20
+                };
                 const energyCost = ENERGY_COST[activityId] || 15;
+
+                const user = gameState.students.find(s => s.id === userId);
+                if (!user) return false;
+
+                const cooldowns = user.activityCooldowns || {};
+                const lastCompleted = cooldowns[activityId] || 0;
+                const now = Date.now();
+                const COOLDOWN_MS = 60 * 60 * 1000; // 1 Hour
+
+                if (now - lastCompleted < COOLDOWN_MS) return false;
+
+                // Check energy - apply time-based regen first
+                const regenedUser = regenEnergyForStudent(user);
+                const currentEnergy = regenedUser.strength?.current ?? 100;
+                const hasEnergy = currentEnergy >= energyCost;
+                const newEnergy = Math.max(0, currentEnergy - energyCost);
+                const actualPoints = hasEnergy ? points : 0;
+
+                // Streak Logic
+                let currentStreak = user.classroomStreak || 0;
+                let lastClassroomDate = user.lastClassroomDate || "";
+                const today = new Date().toISOString().split('T')[0];
+                const yesterdayDate = new Date();
+                yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+                const yesterday = yesterdayDate.toISOString().split('T')[0];
+
+                let bonusPoints = 0;
+                if (lastClassroomDate !== today) {
+                    if (lastClassroomDate === yesterday) {
+                        currentStreak += 1;
+                    } else {
+                        currentStreak = calculateMilestone(currentStreak) + 1;
+                    }
+                    lastClassroomDate = today;
+                    if (currentStreak === 25) {
+                        bonusPoints = 50;
+                    }
+                }
+
+                const finalPoints = actualPoints + bonusPoints;
+
+                const updatedUser = {
+                    ...regenedUser,
+                    xp: user.xp + finalPoints,
+                    strength: { ...regenedUser.strength, current: newEnergy },
+                    lastEnergyRegen: now,
+                    activityCooldowns: { ...cooldowns, [activityId]: now },
+                    classroomStreak: currentStreak,
+                    lastClassroomDate: lastClassroomDate
+                };
 
                 setGameState(prev => {
                     const userIndex = prev.students.findIndex(s => s.id === userId);
                     if (userIndex === -1) return prev;
 
-                    const user = prev.students[userIndex];
-                    const cooldowns = user.activityCooldowns || {};
-                    const lastCompleted = cooldowns[activityId] || 0;
-                    const now = Date.now();
-                    const COOLDOWN_MS = 60 * 60 * 1000; // 1 Hour
-
-                    if (now - lastCompleted < COOLDOWN_MS) return prev;
-
-                    // Check energy - apply time-based regen first
-                    const regenedUser = regenEnergyForStudent(user);
-                    const currentEnergy = regenedUser.strength?.current ?? 100;
-                    const hasEnergy = currentEnergy >= energyCost;
-                    // Drain energy regardless (even if 0, activity still plays)
-                    const newEnergy = Math.max(0, currentEnergy - energyCost);
-
-                    // "Prisión Mágica": if no energy, can play but no points
-                    const actualPoints = hasEnergy ? points : 0;
-
                     const updatedStudents = [...prev.students];
-                    updatedStudents[userIndex] = {
-                        ...regenedUser,
-                        xp: user.xp + actualPoints,
-                        strength: { ...regenedUser.strength, current: newEnergy },
-                        lastEnergyRegen: now,
-                        activityCooldowns: { ...cooldowns, [activityId]: now }
-                    };
+                    updatedStudents[userIndex] = updatedUser;
 
-                    // House Points (only if energy was available)
                     let updatedHouses = { ...prev.houses };
-                    if (actualPoints > 0 && updatedHouses[user.house]) {
+                    if (finalPoints > 0 && updatedHouses[user.house]) {
                         updatedHouses[user.house] = {
                             ...updatedHouses[user.house],
-                            points: updatedHouses[user.house].points + actualPoints
+                            points: (updatedHouses[user.house]?.points || 0) + finalPoints
                         };
                     }
 
-                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedStudents[userIndex] : prev.currentUser;
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedUser : prev.currentUser;
                     return { ...prev, students: updatedStudents, houses: updatedHouses, currentUser: updatedCurrentUser };
                 });
+
+                // Persist to Supabase
+                saveStudentToSupabase(updatedUser);
+
                 return true;
             },
 
-            startNewCycle: () => {
-                setGameState(prev => ({
-                    ...prev,
-                    students: prev.students.map(s => {
-                        if (s.role === 'director') return s;
-                        return {
-                            ...s,
-                            xp: 0,
-                            level: 1,
-                            streakDirector: 0,
-                            streakAnimal: 0,
-                            petHistory: {},
-                            challengeHistory: {}
-                        };
-                    })
-                }));
-            },
+            startNewCycle,
 
             advanceSchoolYear,
 
@@ -1655,28 +1831,38 @@ export const GameProvider = ({ children }) => {
 
             // --- Energy Management ---
             regenEnergy: (userId) => {
+                const user = gameState.students.find(s => s.id === userId);
+                if (!user) return;
+
+                const updatedUser = regenEnergyForStudent(user);
+
                 setGameState(prev => {
-                    const idx = prev.students.findIndex(s => s.id === userId);
-                    if (idx === -1) return prev;
-                    const updated = [...prev.students];
-                    updated[idx] = regenEnergyForStudent(updated[idx]);
-                    const updatedCurrentUser = prev.currentUser?.id === userId ? updated[idx] : prev.currentUser;
-                    return { ...prev, students: updated, currentUser: updatedCurrentUser };
+                    const updatedStudents = prev.students.map(s => s.id === userId ? updatedUser : s);
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedUser : prev.currentUser;
+                    return { ...prev, students: updatedStudents, currentUser: updatedCurrentUser };
                 });
+
+                saveStudentToSupabase(updatedUser);
             },
 
             // Director restores a student's full energy
             restoreEnergy: (userId, amount = 100) => {
+                const user = gameState.students.find(s => s.id === userId);
+                if (!user) return;
+
+                const newEnergy = amount === 100 
+                    ? (user.strength?.max ?? 100) 
+                    : Math.min(user.strength?.max ?? 100, (user.strength?.current ?? 0) + amount);
+
+                const updatedUser = { ...user, strength: { ...user.strength, current: newEnergy }, lastEnergyRegen: Date.now() };
+
                 setGameState(prev => {
-                    const idx = prev.students.findIndex(s => s.id === userId);
-                    if (idx === -1) return prev;
-                    const updated = [...prev.students];
-                    const s = updated[idx];
-                    const newEnergy = amount === 100 ? (s.strength?.max ?? 100) : Math.min(s.strength?.max ?? 100, (s.strength?.current ?? 0) + amount);
-                    updated[idx] = { ...s, strength: { ...s.strength, current: newEnergy }, lastEnergyRegen: Date.now() };
-                    const updatedCurrentUser = prev.currentUser?.id === userId ? updated[idx] : prev.currentUser;
-                    return { ...prev, students: updated, currentUser: updatedCurrentUser };
+                    const updatedStudents = prev.students.map(s => s.id === userId ? updatedUser : s);
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedUser : prev.currentUser;
+                    return { ...prev, students: updatedStudents, currentUser: updatedCurrentUser };
                 });
+
+                saveStudentToSupabase(updatedUser);
             },
 
             // --- House Chat Status ---
@@ -1718,31 +1904,38 @@ export const GameProvider = ({ children }) => {
 
             // --- Quick XP Adjustment (Director) ---
             adjustStudentXP: (userId, amount) => {
+                const user = gameState.students.find(s => s.id === userId);
+                if (!user) return;
+
+                const updatedUser = { ...user, xp: Math.max(0, (user.xp || 0) + amount) };
+
                 setGameState(prev => {
-                    const idx = prev.students.findIndex(s => s.id === userId);
-                    if (idx === -1) return prev;
-                    const updated = [...prev.students];
-                    const s = updated[idx];
-                    updated[idx] = { ...s, xp: Math.max(0, (s.xp || 0) + amount) };
-                    const updatedCurrentUser = prev.currentUser?.id === userId ? updated[idx] : prev.currentUser;
-                    return { ...prev, students: updated, currentUser: updatedCurrentUser };
+                    const updatedStudents = prev.students.map(s => s.id === userId ? updatedUser : s);
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedUser : prev.currentUser;
+                    return { ...prev, students: updatedStudents, currentUser: updatedCurrentUser };
                 });
+
+                saveStudentToSupabase(updatedUser);
             },
 
             // --- Monthly Bonus (50 XP, once per month per user) ---
             claimMonthlyBonus: (userId) => {
+                const user = gameState.students.find(s => s.id === userId);
+                if (!user) return;
+
+                const now = new Date();
+                const currentMonth = `${now.getFullYear()}-${now.getMonth() + 1}`;
+                if (user.lastMonthlyBonus === currentMonth) return; // Already claimed this month
+
+                const updatedUser = { ...user, xp: (user.xp || 0) + 50, lastMonthlyBonus: currentMonth };
+
                 setGameState(prev => {
-                    const idx = prev.students.findIndex(s => s.id === userId);
-                    if (idx === -1) return prev;
-                    const s = prev.students[idx];
-                    const now = new Date();
-                    const currentMonth = `${now.getFullYear()}-${now.getMonth() + 1}`;
-                    if (s.lastMonthlyBonus === currentMonth) return prev; // Already claimed this month
-                    const updated = [...prev.students];
-                    updated[idx] = { ...s, xp: (s.xp || 0) + 50, lastMonthlyBonus: currentMonth };
-                    const updatedCurrentUser = prev.currentUser?.id === userId ? updated[idx] : prev.currentUser;
-                    return { ...prev, students: updated, currentUser: updatedCurrentUser };
+                    const updatedStudents = prev.students.map(s => s.id === userId ? updatedUser : s);
+                    const updatedCurrentUser = prev.currentUser?.id === userId ? updatedUser : prev.currentUser;
+                    return { ...prev, students: updatedStudents, currentUser: updatedCurrentUser };
                 });
+
+                saveStudentToSupabase(updatedUser);
             },
 
             updateUser: editStudent,
